@@ -1,4 +1,4 @@
-export type StepType = "browser" | "swagger" | "cloudwatch" | "sqlEvidence";
+export type StepType = "browser" | "swagger" | "cloudwatch" | "sqlEvidence" | "cli";
 
 export type ExportRule =
   | {
@@ -10,6 +10,11 @@ export type ExportRule =
       source: "responseText";
       regex?: string;
       jsonPath?: string;
+    }
+  | {
+      source: "stdout" | "stderr";
+      regex?: string;
+      jsonPath?: string;
     };
 
 export interface StepConfig {
@@ -19,6 +24,25 @@ export interface StepConfig {
   responseSelector?: string;
   retries?: number;
   retryDelayMs?: number;
+  cli?: {
+    command?: string;
+    args?: string[];
+    cwd?: string;
+    timeoutMs?: number;
+    env?: Record<string, string>;
+    errorPatterns?: string[];
+    successCriteria?: {
+      stdoutRegex?: string;
+      stderrRegex?: string;
+      stdoutJsonPath?: string;
+      stderrJsonPath?: string;
+    };
+    pipeline?: {
+      pre?: Array<{ command: string; args?: string[] }>;
+      script: { command: string; args?: string[] };
+      post?: Array<{ command: string; args?: string[] }>;
+    };
+  };
   sql?: {
     queryPath?: string;
     resultPath?: string;

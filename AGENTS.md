@@ -6,7 +6,7 @@ This guide describes how to work in this repository. Keep changes small, follow 
 
 - `src/`: TypeScript source code (runner, steps, helpers).
 - `tests/`: Vitest tests, named by priority (`p0-*.spec.ts`, `p1-*.spec.ts`, etc.).
-- `README.md` and `BACKLOG.md`: product and TDD roadmap.
+- `README.md`: product and TDD roadmap.
 - `package.json`, `tsconfig.json`: build and runtime configuration.
 
 ## Build, Test, and Development Commands

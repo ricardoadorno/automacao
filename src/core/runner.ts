@@ -9,6 +9,7 @@ import { applyExports } from "./exports";
 import { loadOpenApi } from "../domains/api/openapi";
 import { executeSwaggerStep } from "../domains/api/swagger";
 import { executeSqlEvidenceStep } from "../domains/sql/sql";
+import { executeCliStep } from "../domains/cli/cli";
 import { Plan, PlanStep, StepResult } from "./types";
 import { createRunId, nowIso } from "./utils";
 
@@ -66,6 +67,7 @@ export async function executePlan(plan: Plan, outDir: string): Promise<void> {
         const swaggerResult = await executeSwaggerStep(resolvedStep, actions, openapi, stepDir);
         status = "OK";
         outputs.screenshot = path.basename(swaggerResult.screenshotPath);
+        outputs.evidence = swaggerResult.evidenceFile;
         if (swaggerResult.responseText) {
           outputs.responseText = swaggerResult.responseText;
         }
@@ -88,6 +90,19 @@ export async function executePlan(plan: Plan, outDir: string): Promise<void> {
         outputs.rows = sqlResult.rows;
         applyExports(context, resolvedStep.exports, {
           sqlRows: sqlResult.rowsData
+        });
+        notes = undefined;
+      } else if (resolvedStep.type === "cli") {
+        const cliResult = await executeCliStep(resolvedStep, stepDir);
+        status = "OK";
+        outputs.stdout = cliResult.stdoutFile;
+        outputs.stderr = cliResult.stderrFile;
+        outputs.evidence = cliResult.evidenceFile;
+        outputs.exitCode = cliResult.exitCode;
+        outputs.durationMs = cliResult.durationMs;
+        applyExports(context, resolvedStep.exports, {
+          stdout: cliResult.stdout,
+          stderr: cliResult.stderr
         });
         notes = undefined;
       }
@@ -306,6 +321,19 @@ function describeStep(step: PlanStep): string {
     return parts.length > 0 ? ` [${parts.join(" ")}]` : "";
   }
 
+  if (step.type === "cli") {
+    const cli = step.config?.cli;
+    if (!cli) {
+      return "";
+    }
+    const parts = [
+      cli.command ? `command=${path.basename(cli.command)}` : null,
+      cli.cwd ? `cwd=${path.basename(cli.cwd)}` : null,
+      cli.timeoutMs !== undefined ? `timeoutMs=${cli.timeoutMs}` : null
+    ].filter(Boolean);
+    return parts.length > 0 ? ` [${parts.join(" ")}]` : "";
+  }
+
   return "";
 }
 
@@ -320,6 +348,9 @@ function describeOutputs(outputs: Record<string, unknown>): string {
   if (typeof outputs.screenshot === "string") {
     parts.push(`screenshot=${outputs.screenshot}`);
   }
+  if (typeof outputs.exitCode === "number") {
+    parts.push(`exitCode=${outputs.exitCode}`);
+  }
   return parts.length > 0 ? ` [${parts.join(" ")}]` : "";
 }
 
@@ -333,6 +364,8 @@ function renderArtifacts(outputs: Record<string, unknown>): string {
   addArtifactLink(links, stepDir, outputs.query, "query");
   addArtifactLink(links, stepDir, outputs.result, "result");
   addArtifactLink(links, stepDir, outputs.evidence, "evidence");
+  addArtifactLink(links, stepDir, outputs.stdout, "stdout");
+  addArtifactLink(links, stepDir, outputs.stderr, "stderr");
   return links.length > 0 ? links.join("") : "-";
 }
 

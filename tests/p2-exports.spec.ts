@@ -22,4 +22,13 @@ describe("P2 exports from response text", () => {
     applyExports(context, rules, { responseText: "{\"id\":\"xyz\"}" });
     expect(context.pedidoId).toBe("xyz");
   });
+
+  it("extracts from stdout via regex", () => {
+    const context: Context = {};
+    const rules: Record<string, ExportRule> = {
+      total: { source: "stdout", regex: "total=(\\d+)" }
+    };
+    applyExports(context, rules, { stdout: "total=5\n" });
+    expect(context.total).toBe("5");
+  });
 });

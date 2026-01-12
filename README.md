@@ -31,6 +31,7 @@ O agente deve suportar, no minimo:
 - swagger: valida OpenAPI, executa behavior no Swagger UI, captura screenshots e pode extrair variaveis do response
 - cloudwatch: step browser especializado com filtros e retries
 - sqlEvidence: recebe query.sql + result.csv e gera evidencia verificavel com HTML renderizado, metadados simples e print
+- cli: executa um comando local, grava stdout/stderr e metadados simples
 
 Config basica por step (exemplos de campos):
 
@@ -38,6 +39,7 @@ Config basica por step (exemplos de campos):
 - swagger: behaviorId, config.operationId ou config.path+config.method, config.responseSelector
 - cloudwatch: behaviorId, config.retries, config.retryDelayMs
 - sqlEvidence: config.sql.queryPath, config.sql.resultPath, config.sql.expectRows
+- cli: config.cli.command, config.cli.args, config.cli.cwd, config.cli.timeoutMs
 
 ### 2.3 Contexto do run e variaveis
 
@@ -58,6 +60,7 @@ Export rules (exemplos):
 - SQL: exports.pedidoId = { source: "sql", column: "id", row: 0 }
 - Swagger: exports.pedidoId = { source: "responseText", regex: "\"id\":\"(\\w+)\"" }
 - Swagger JSON: exports.pedidoId = { source: "responseText", jsonPath: "id" }
+- CLI: exports.rowCount = { source: "stdout", jsonPath: "rows" }
 
 ### 2.4 Artefatos por step
 
@@ -133,9 +136,18 @@ Se qualquer step falhar:
 - gerar index.html com todos os steps, status e links
 - gerar runSummary.json com contexto final e resultados
 
-## 5) Backlog guiado por cenarios (TDD)
+## 5) Status do backlog (versao estavel)
 
-Ver detalhes em `BACKLOG.md`.
+Implementado:
+- P0: runner basico, outputs, report e falha controlada
+- P1: SQL evidence por arquivos e SQLite, HTML + screenshot, expectRows
+- P2: contexto, exports, requires e resolucao de placeholders
+- P3: validacao OpenAPI + captura de response; evidencia HTML do Swagger
+- P4: retries no CloudWatch com attempts
+- P5.1/P5.2: CLI executa comando, logs, metadata, exports via stdout/stderr e evidencia HTML
+- P5.3: pipeline pre/script/post no CLI
+- P5.4: heuristica de erro (exitCode, stderr patterns, successCriteria)
+- P5.5: redacao de segredos e validacao de credenciais para AWS CLI
 
 ## 6) Saida esperada (artefatos)
 
@@ -153,6 +165,8 @@ Para cada step:
 - metadata.json padronizado
 - prints solicitados
 - em caso de erro: error.json e error.png
+- swagger evidencia: evidence.html com dados da requisicao e response
+- cli evidencia: evidence.html com comando, stdout e stderr
 
 Para sqlEvidence:
 
@@ -160,6 +174,11 @@ Para sqlEvidence:
 - result.csv
 - evidence.html
 - screenshot.png
+
+Para cli:
+
+- stdout.txt
+- stderr.txt
 
 ## 7) Exemplo completo (mock local)
 
@@ -225,7 +244,10 @@ Notas:
 
 Fluxo:
 - GET no JSONPlaceholder
-- SELECT no SQLite validando o titulo
+- CloudWatch stand-in com retries
+- CLI cria arquivo JSON, apaga e repassa payload
+- CLI atualiza o SQLite
+- SQL evidence valida os dados
 - busca em site publico usando o output do SQLite
 
 Rodar:
@@ -234,7 +256,25 @@ npx playwright install
 npm start -- --plan examples/jsonplaceholder-sqlite/plan.json --out runs
 ```
 
-## 12) Arquitetura por dominios (novo padrao)
+## 12) Exemplo CLI (sem browser)
+
+Executa um comando simples e gera stdout/stderr como artefatos.
+
+Rodar:
+
+```
+npm start -- --plan examples/cli/plan.json --out runs
+```
+
+## 13) Exemplo CLI com fluxo de arquivos
+
+Fluxo: baixa um arquivo local, transforma, apaga e usa o conteudo no step final.
+
+```
+npm start -- --plan examples/cli-flow/plan.json --out runs
+```
+
+## 14) Arquitetura por dominios (novo padrao)
 
 O codigo agora e organizado por dominios, para facilitar debug e extensao:
 
@@ -243,7 +283,12 @@ O codigo agora e organizado por dominios, para facilitar debug e extensao:
 - `src/domains/api/`: validacao OpenAPI e step swagger
 - `src/domains/sql/`: SQL evidence e renderizacao
 
-## 13) Como estender daqui para frente
+## 15) Como estender daqui para frente
+
+## 16) Testes
+
+Mapa de cobertura: `tests/TEST_MAP.md`
+E2E real usa Playwright e pode exigir `npx playwright install`.
 
 Padrao para adicionar um novo step ou comportamento:
 

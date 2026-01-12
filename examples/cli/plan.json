@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "feature": "cli-basic",
+    "ticket": "P5.1",
+    "env": "local"
+  },
+  "steps": [
+    {
+      "id": "cli-echo",
+      "type": "cli",
+      "config": {
+        "cli": {
+          "command": "node",
+          "args": ["-e", "console.log('cli ok'); console.error('cli err');"]
+        }
+      }
+    }
+  ],
+  "failPolicy": "stop"
+}

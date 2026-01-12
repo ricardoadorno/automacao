@@ -29,6 +29,18 @@
           "state": "visible"
         }
       ]
+    },
+    "cloudwatch-echo": {
+      "actions": [
+        {
+          "type": "goto",
+          "url": "https://httpbin.org/anything?correlationId={todoId}"
+        },
+        {
+          "type": "waitForSelector",
+          "selector": "body"
+        }
+      ]
     }
   }
 }

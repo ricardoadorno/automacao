@@ -20,12 +20,19 @@ Rodar todos os testes:
 npm test
 ```
 
+Mapa de testes: `tests/TEST_MAP.md`
+E2E real usa Playwright e pode exigir `npx playwright install`.
+
 Cobertura principal:
 - P0: browser basico + falha controlada
 - P1: SQL evidence (HTML, metadados simples, expectRows)
 - P2: contexto, exports, ordem/encadeamento
 - P3: validacao OpenAPI
 - P4: retries CloudWatch
+- P5: CLI (pipeline, heuristicas de erro, redacao, exports)
+
+Status do backlog (versao estavel):
+- OK: P0, P1, P2, P3, P4, P5.1, P5.2, P5.3, P5.4, P5.5
 
 ## 3) Exemplo mock local (sem internet)
 
@@ -84,13 +91,48 @@ Para cada run:
 SQL evidence adiciona:
 - `query.sql`, `result.csv`, `evidence.html`
 
-## 8) Problemas comuns
+Swagger e CLI adicionam:
+- `evidence.html`
+
+## 8) Exemplo CLI (sem browser)
+
+Executa um comando simples e gera stdout/stderr como artefatos.
+
+```
+npm start -- --plan examples/cli/plan.json --out runs
+```
+
+Saida esperada:
+- `runs/<runId>/steps/01_cli-echo/stdout.txt`
+- `runs/<runId>/steps/01_cli-echo/stderr.txt`
+- `runs/<runId>/steps/01_cli-echo/metadata.json`
+
+## 9) Exemplo CLI com fluxo de arquivos
+
+Fluxo:
+- baixa um arquivo local para a pasta de trabalho
+- transforma o conteudo e exporta `rowCount`
+- apaga o arquivo transformado e exporta `payload`
+- usa `payload` no step final para gerar `final.txt`
+
+```
+npm start -- --plan examples/cli-flow/plan.json --out runs
+```
+
+Artefatos:
+- `runs/<runId>/steps/01_cli-get-file/stdout.txt`
+- `runs/<runId>/steps/02_cli-transform/stdout.txt`
+- `runs/<runId>/steps/03_cli-delete-pass/stdout.txt`
+- `runs/<runId>/steps/04_cli-use-payload/stdout.txt`
+- `examples/cli-flow/work/final.txt`
+
+## 10) Problemas comuns
 
 - "spawn EPERM": execute com permissao elevada.
 - Timeout no Swagger UI: a UI pode variar; prefira o plano JSONPlaceholder para response detalhado.
 - Falha por `requires`: indica que a ordem do plano nao satisfaz as dependencias do contexto.
 
-## 9) GET -> SQLite -> filtro por data
+## 11) GET -> SQLite -> filtro por data
 
 Fluxo:
 - GET no JSONPlaceholder via Swagger UI
@@ -108,11 +150,14 @@ Rodar:
 npm start -- --plan examples/sqlite/plan.json --out runs
 ```
 
-## 10) JSONPlaceholder -> SQLite -> Search
+## 12) JSONPlaceholder -> SQLite -> Search
 
 Fluxo:
 - GET no JSONPlaceholder
-- SELECT no SQLite validando o titulo
+- CloudWatch stand-in com retries
+- CLI cria arquivo JSON, apaga e repassa payload
+- CLI atualiza o SQLite
+- SQL evidence valida os dados
 - busca em site publico usando o output do SQLite
 
 Rodar:
@@ -120,7 +165,7 @@ Rodar:
 npm start -- --plan examples/jsonplaceholder-sqlite/plan.json --out runs
 ```
 
-## 11) Extensao do app (novo padrao)
+## 13) Extensao do app (novo padrao)
 
 O projeto agora segue separacao por dominios:
 - `src/core/`: orquestracao e tipos compartilhados

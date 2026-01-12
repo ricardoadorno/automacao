@@ -23,6 +23,67 @@
         "todoTitle": {
           "source": "responseText",
           "jsonPath": "title"
+        },
+        "todoCompleted": {
+          "source": "responseText",
+          "jsonPath": "completed"
+        }
+      }
+    },
+    {
+      "id": "cloudwatch-echo",
+      "type": "cloudwatch",
+      "behaviorId": "cloudwatch-echo",
+      "requires": ["todoId"],
+      "config": {
+        "retries": 1,
+        "retryDelayMs": 500
+      }
+    },
+    {
+      "id": "cli-write-json",
+      "type": "cli",
+      "requires": ["todoId", "todoTitle", "todoCompleted"],
+      "config": {
+        "cli": {
+          "command": "node",
+          "args": [
+            "../scripts/write-todo-json.js",
+            "todo.json",
+            "{todoId}",
+            "{todoTitle}",
+            "{todoCompleted}"
+          ],
+          "cwd": "examples/jsonplaceholder-sqlite/work"
+        }
+      }
+    },
+    {
+      "id": "cli-read-delete",
+      "type": "cli",
+      "exports": {
+        "payloadText": {
+          "source": "stdout",
+          "jsonPath": "payloadText"
+        }
+      },
+      "config": {
+        "cli": {
+          "command": "node",
+          "args": ["../scripts/read-delete-json.js", "todo.json"],
+          "cwd": "examples/jsonplaceholder-sqlite/work"
+        }
+      }
+    },
+    {
+      "id": "cli-update-sqlite",
+      "type": "cli",
+      "requires": ["payloadText"],
+      "config": {
+        "cli": {
+          "command": "node",
+          "args": ["../scripts/update-sqlite.js", "../jsonplaceholder.db", "{payloadText}"],
+          "cwd": "examples/jsonplaceholder-sqlite/work"
         }
       }
     },
@@ -33,7 +94,7 @@
         "sql": {
           "adapter": "sqlite",
           "dbPath": "examples/jsonplaceholder-sqlite/jsonplaceholder.db",
-          "query": "select id, title, completed from todos where id = {todoId} and title = '{todoTitle}'",
+          "query": "select id, title, completed from todos where id = {todoId}",
           "expectRows": 1
         }
       },
