@@ -5,19 +5,14 @@
     "env": "local"
   },
   "behaviorsPath": "examples/sqlite/behaviors.json",
-  "openapiPath": "examples/sqlite/openapi.json",
+  "curlPath": "examples/sqlite/get-todo.curl",
   "steps": [
     {
-      "id": "swagger-get",
-      "type": "swagger",
-      "behaviorId": "swagger-jsonplaceholder",
-      "config": {
-        "operationId": "getTodoById",
-        "responseSelector": "body"
-      },
+      "id": "api-get-todo",
+      "type": "api",
       "exports": {
         "todoId": {
-          "source": "responseText",
+          "source": "responseData",
           "jsonPath": "id"
         }
       }
@@ -35,9 +30,9 @@
       }
     },
     {
-      "id": "cloudwatch",
-      "type": "cloudwatch",
-      "behaviorId": "cloudwatch-date-filter",
+      "id": "browser-date-filter",
+      "type": "browser",
+      "behaviorId": "browser-date-filter",
       "requires": [
         "startedAt"
       ],

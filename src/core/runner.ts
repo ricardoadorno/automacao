@@ -2,13 +2,11 @@ import { promises as fs } from "fs";
 import path from "path";
 import { loadBehaviors } from "../domains/browser/behaviors";
 import { executeBrowserStep } from "../domains/browser/browser";
-import { executeCloudwatchStep } from "../domains/browser/cloudwatch";
 import { Context, resolveTemplatesDeep } from "./context";
 import { writeErrorFile, writeErrorPng } from "./errors";
 import { applyExports } from "./exports";
-import { loadOpenApi } from "../domains/api/openapi";
-import { executeSwaggerStep } from "../domains/api/swagger";
-import { executeSqlEvidenceStep } from "../domains/sql/sql";
+import { executeApiStep } from "../domains/api/api";
+import { closeSqlConnections, executeSqlEvidenceStep } from "../domains/sql/sql";
 import { executeCliStep } from "../domains/cli/cli";
 import { Plan, PlanStep, StepResult } from "./types";
 import { createRunId, nowIso } from "./utils";
@@ -18,7 +16,7 @@ export async function executePlan(plan: Plan, outDir: string): Promise<void> {
   const runDir = path.resolve(outDir, runId);
   const stepsDir = path.join(runDir, "steps");
   const behaviors = plan.behaviorsPath ? await loadBehaviors(plan.behaviorsPath) : null;
-  const openapi = plan.openapiPath ? await loadOpenApi(plan.openapiPath) : null;
+  const curlPath = plan.curlPath ?? "";
   const runStartedAt = nowIso();
   const totalSteps = plan.steps.length;
   const context: Context = {
@@ -34,142 +32,147 @@ export async function executePlan(plan: Plan, outDir: string): Promise<void> {
 
   const results: StepResult[] = [];
 
-  for (let i = 0; i < plan.steps.length; i += 1) {
-    const step = plan.steps[i];
-    const stepIndex = String(i + 1).padStart(2, "0");
-    const stepDirName = `${stepIndex}_${step.id ?? step.type}`;
-    const stepDir = path.join(stepsDir, stepDirName);
+  try {
+    for (let i = 0; i < plan.steps.length; i += 1) {
+      const step = plan.steps[i];
+      const stepIndex = String(i + 1).padStart(2, "0");
+      const stepDirName = `${stepIndex}_${step.id ?? step.type}`;
+      const stepDir = path.join(stepsDir, stepDirName);
 
-    await fs.mkdir(stepDir, { recursive: true });
+      await fs.mkdir(stepDir, { recursive: true });
 
-    const stepStartedAt = nowIso();
-    let status: StepResult["status"] = "SKIPPED";
-    const outputs: Record<string, unknown> = {};
-    outputs.stepDir = `steps/${stepDirName}`;
-    let notes: string | undefined = "Bootstrap: step execution not implemented yet";
-    const errorPath = path.join(stepDir, "error.json");
-    const errorPngPath = path.join(stepDir, "error.png");
-    let resolvedStep = step;
+      const stepStartedAt = nowIso();
+      let status: StepResult["status"] = "SKIPPED";
+      const outputs: Record<string, unknown> = {};
+      outputs.stepDir = `steps/${stepDirName}`;
+      let notes: string | undefined = "Bootstrap: step execution not implemented yet";
+      const errorPath = path.join(stepDir, "error.json");
+      const errorPngPath = path.join(stepDir, "error.png");
+      let resolvedStep = step;
 
-    try {
-      logStepStart(i + 1, totalSteps, step);
-      ensureRequires(step, context);
-      resolvedStep = resolveTemplatesDeep(step, context);
+      try {
+        logStepStart(i + 1, totalSteps, step);
+        ensureRequires(step, context);
+        resolvedStep = resolveTemplatesDeep(step, context);
 
-      if (resolvedStep.type === "browser") {
-        const actions = getBehaviorActions(resolvedStep.behaviorId, behaviors, context);
-        const browserResult = await executeBrowserStep(actions, stepDir);
-        status = "OK";
-        outputs.screenshot = path.basename(browserResult.screenshotPath);
-        notes = undefined;
-      } else if (resolvedStep.type === "swagger") {
-        const actions = getBehaviorActions(resolvedStep.behaviorId, behaviors, context);
-        const swaggerResult = await executeSwaggerStep(resolvedStep, actions, openapi, stepDir);
-        status = "OK";
-        outputs.screenshot = path.basename(swaggerResult.screenshotPath);
-        outputs.evidence = swaggerResult.evidenceFile;
-        if (swaggerResult.responseText) {
-          outputs.responseText = swaggerResult.responseText;
+        if (resolvedStep.type === "browser") {
+          const actions = getBehaviorActions(resolvedStep.behaviorId, behaviors, context);
+          const browserResult = await executeBrowserStep(resolvedStep, actions, stepDir, plan.browser);
+          status = "OK";
+          outputs.screenshot = path.basename(browserResult.screenshotPath);
+          if (browserResult.screenshotPaths.length > 1) {
+            outputs.screenshots = browserResult.screenshotPaths.map((item) => path.basename(item));
+          }
+          outputs.attempts = browserResult.attempts;
+          notes = undefined;
+        } else if (resolvedStep.type === "api") {
+          const apiResult = await executeApiStep(resolvedStep, curlPath, stepDir, context);
+          status = "OK";
+          outputs.evidence = apiResult.evidenceFile;
+          if (apiResult.statusCode) {
+            outputs.statusCode = apiResult.statusCode;
+          }
+          if (apiResult.responseData) {
+            outputs.responseData = apiResult.responseData;
+          }
+          applyExports(context, resolvedStep.exports, { 
+            responseData: apiResult.responseData,
+            responseText: typeof apiResult.responseData === "string" ? apiResult.responseData : JSON.stringify(apiResult.responseData)
+          });
+          notes = undefined;
+        } else if (resolvedStep.type === "sqlEvidence") {
+          const sqlResult = await executeSqlEvidenceStep(resolvedStep, stepDir);
+          status = "OK";
+          outputs.screenshot = path.basename(sqlResult.screenshotPath);
+          outputs.query = sqlResult.queryFile;
+          outputs.result = sqlResult.resultFile;
+          outputs.evidence = sqlResult.evidenceFile;
+          outputs.rows = sqlResult.rows;
+          applyExports(context, resolvedStep.exports, {
+            sqlRows: sqlResult.rowsData
+          });
+          notes = undefined;
+        } else if (resolvedStep.type === "cli") {
+          const cliResult = await executeCliStep(resolvedStep, stepDir);
+          status = "OK";
+          outputs.stdout = cliResult.stdoutFile;
+          outputs.stderr = cliResult.stderrFile;
+          outputs.evidence = cliResult.evidenceFile;
+          outputs.exitCode = cliResult.exitCode;
+          outputs.durationMs = cliResult.durationMs;
+          applyExports(context, resolvedStep.exports, {
+            stdout: cliResult.stdout,
+            stderr: cliResult.stderr
+          });
+          notes = undefined;
         }
-        applyExports(context, resolvedStep.exports, { responseText: swaggerResult.responseText });
-        notes = undefined;
-      } else if (resolvedStep.type === "cloudwatch") {
-        const actions = getBehaviorActions(resolvedStep.behaviorId, behaviors, context);
-        const cloudwatchResult = await executeCloudwatchStep(resolvedStep, actions, stepDir);
-        status = "OK";
-        outputs.screenshot = path.basename(cloudwatchResult.screenshotPath);
-        outputs.attempts = cloudwatchResult.attempts;
-        notes = undefined;
-      } else if (resolvedStep.type === "sqlEvidence") {
-        const sqlResult = await executeSqlEvidenceStep(resolvedStep, stepDir);
-        status = "OK";
-        outputs.screenshot = path.basename(sqlResult.screenshotPath);
-        outputs.query = sqlResult.queryFile;
-        outputs.result = sqlResult.resultFile;
-        outputs.evidence = sqlResult.evidenceFile;
-        outputs.rows = sqlResult.rows;
-        applyExports(context, resolvedStep.exports, {
-          sqlRows: sqlResult.rowsData
-        });
-        notes = undefined;
-      } else if (resolvedStep.type === "cli") {
-        const cliResult = await executeCliStep(resolvedStep, stepDir);
-        status = "OK";
-        outputs.stdout = cliResult.stdoutFile;
-        outputs.stderr = cliResult.stderrFile;
-        outputs.evidence = cliResult.evidenceFile;
-        outputs.exitCode = cliResult.exitCode;
-        outputs.durationMs = cliResult.durationMs;
-        applyExports(context, resolvedStep.exports, {
-          stdout: cliResult.stdout,
-          stderr: cliResult.stderr
-        });
-        notes = undefined;
+        logStepSuccess(i + 1, totalSteps, resolvedStep, outputs);
+      } catch (error) {
+        status = "FAIL";
+        notes = error instanceof Error ? error.message : String(error);
+        logStepFailure(i + 1, totalSteps, step, notes);
+        await writeErrorFile(errorPath, error);
+        await writeErrorPng(errorPngPath);
+        if ((plan.failPolicy ?? "stop") === "stop") {
+          logStopOnFailure();
+          await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, notes);
+          results.push({
+            id: resolvedStep.id ?? resolvedStep.type,
+            type: resolvedStep.type,
+            status,
+            startedAt: stepStartedAt,
+            finishedAt: nowIso(),
+            inputs: resolvedStep,
+            outputs,
+            notes
+          });
+          break;
+        }
       }
-      logStepSuccess(i + 1, totalSteps, resolvedStep, outputs);
-    } catch (error) {
-      status = "FAIL";
-      notes = error instanceof Error ? error.message : String(error);
-      logStepFailure(i + 1, totalSteps, step, notes);
-      await writeErrorFile(errorPath, error);
-      await writeErrorPng(errorPngPath);
-      if ((plan.failPolicy ?? "stop") === "stop") {
-        logStopOnFailure();
-        await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, notes);
-        results.push({
-          id: resolvedStep.id ?? resolvedStep.type,
-          type: resolvedStep.type,
-          status,
-          startedAt: stepStartedAt,
-          finishedAt: nowIso(),
-          inputs: resolvedStep,
-          outputs,
-          notes
-        });
-        break;
-      }
+
+      const result: StepResult = {
+        id: resolvedStep.id ?? resolvedStep.type,
+        type: resolvedStep.type,
+        status,
+        startedAt: stepStartedAt,
+        finishedAt: nowIso(),
+        inputs: resolvedStep,
+        outputs,
+        notes
+      };
+
+      await fs.writeFile(
+        path.join(stepDir, "metadata.json"),
+        JSON.stringify(result, null, 2),
+        "utf-8"
+      );
+
+      results.push(result);
     }
 
-    const result: StepResult = {
-      id: resolvedStep.id ?? resolvedStep.type,
-      type: resolvedStep.type,
-      status,
-      startedAt: stepStartedAt,
+    const runSummary = {
+      runId,
+      startedAt: runStartedAt,
       finishedAt: nowIso(),
-      inputs: resolvedStep,
-      outputs,
-      notes
+      feature: plan.metadata.feature,
+      ticket: plan.metadata.ticket ?? null,
+      env: plan.metadata.env ?? null,
+      steps: results,
+      context
     };
 
     await fs.writeFile(
-      path.join(stepDir, "metadata.json"),
-      JSON.stringify(result, null, 2),
+      path.join(runDir, "00_runSummary.json"),
+      JSON.stringify(runSummary, null, 2),
       "utf-8"
     );
 
-    results.push(result);
+    const indexHtml = buildIndexHtml(runSummary);
+    await fs.writeFile(path.join(runDir, "index.html"), indexHtml, "utf-8");
+    logRunFinish(runId, results);
+  } finally {
+    await closeSqlConnections();
   }
-
-  const runSummary = {
-    runId,
-    startedAt: runStartedAt,
-    finishedAt: nowIso(),
-    feature: plan.metadata.feature,
-    ticket: plan.metadata.ticket ?? null,
-    env: plan.metadata.env ?? null,
-    steps: results,
-    context
-  };
-
-  await fs.writeFile(
-    path.join(runDir, "00_runSummary.json"),
-    JSON.stringify(runSummary, null, 2),
-    "utf-8"
-  );
-
-  const indexHtml = buildIndexHtml(runSummary);
-  await fs.writeFile(path.join(runDir, "index.html"), indexHtml, "utf-8");
-  logRunFinish(runId, results);
 }
 
 function buildIndexHtml(summary: { runId: string; steps: StepResult[] }): string {
@@ -286,22 +289,17 @@ function logRunFinish(runId: string, results: StepResult[]): void {
 }
 
 function describeStep(step: PlanStep): string {
-  if (step.type === "browser" || step.type === "cloudwatch") {
+  if (step.type === "browser") {
     const parts = [
       step.behaviorId ? `behavior=${step.behaviorId}` : null,
-      step.type === "cloudwatch" && step.config?.retries !== undefined
-        ? `retries=${step.config.retries}`
-        : null
+      step.config?.retries !== undefined ? `retries=${step.config.retries}` : null
     ].filter(Boolean);
     return parts.length > 0 ? ` [${parts.join(" ")}]` : "";
   }
 
-  if (step.type === "swagger") {
-    const config = step.config ?? {};
+  if (step.type === "api") {
     const parts = [
-      step.behaviorId ? `behavior=${step.behaviorId}` : null,
-      config.operationId ? `operationId=${config.operationId}` : null,
-      config.path && config.method ? `path=${config.method.toUpperCase()} ${config.path}` : null
+      step.behaviorId ? `behavior=${step.behaviorId}` : null
     ].filter(Boolean);
     return parts.length > 0 ? ` [${parts.join(" ")}]` : "";
   }
@@ -361,6 +359,7 @@ function renderArtifacts(outputs: Record<string, unknown>): string {
   }
   const links: string[] = [];
   addArtifactLink(links, stepDir, outputs.screenshot, "screenshot");
+  addArtifactLinks(links, stepDir, outputs.screenshots, "screenshot");
   addArtifactLink(links, stepDir, outputs.query, "query");
   addArtifactLink(links, stepDir, outputs.result, "result");
   addArtifactLink(links, stepDir, outputs.evidence, "evidence");
@@ -380,6 +379,24 @@ function addArtifactLink(
   }
   const href = `${stepDir}/${filename}`;
   links.push(`<a class="artifact" href="${href}">${label}</a>`);
+}
+
+function addArtifactLinks(
+  links: string[],
+  stepDir: string,
+  filenames: unknown,
+  label: string
+): void {
+  if (!Array.isArray(filenames)) {
+    return;
+  }
+  for (const name of filenames) {
+    if (typeof name !== "string" || name.length === 0) {
+      continue;
+    }
+    const href = `${stepDir}/${name}`;
+    links.push(`<a class="artifact" href="${href}">${label}</a>`);
+  }
 }
 
 async function finalizeStep(

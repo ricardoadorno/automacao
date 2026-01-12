@@ -7,7 +7,7 @@ import { executePlan } from "../src/core/runner";
 import { Plan } from "../src/core/types";
 
 const calls: string[] = [];
-let cloudwatchActions: Array<{ type: string; url?: string }> = [];
+let browserActions: Array<{ type: string; url?: string }> = [];
 
 vi.mock("../src/domains/sql/sql", () => {
   return {
@@ -22,29 +22,32 @@ vi.mock("../src/domains/sql/sql", () => {
         rows: 1,
         rowsData: [{ id: "123" }]
       };
-    }
+    },
+    closeSqlConnections: async () => undefined
   };
 });
 
-vi.mock("../src/domains/api/swagger", () => {
+vi.mock("../src/domains/api/api", () => {
   return {
-    executeSwaggerStep: async () => {
-      calls.push("swagger");
+    executeApiStep: async () => {
+      calls.push("api");
       return {
-        screenshotPath: "screenshot.png",
-        responseText: "{\"correlationId\":\"corr-123\"}"
+        evidenceFile: "evidence.html",
+        responseData: { correlationId: "corr-123" },
+        statusCode: 200
       };
     }
   };
 });
 
-vi.mock("../src/domains/browser/cloudwatch", () => {
+vi.mock("../src/domains/browser/browser", () => {
   return {
-    executeCloudwatchStep: async (_step: unknown, actions: Array<{ type: string; url?: string }>) => {
-      calls.push("cloudwatch");
-      cloudwatchActions = actions;
+    executeBrowserStep: async (_step: unknown, actions: Array<{ type: string; url?: string }>) => {
+      calls.push("browser");
+      browserActions = actions;
       return {
         screenshotPath: "screenshot.png",
+        screenshotPaths: ["screenshot.png"],
         attempts: 1
       };
     }
@@ -52,9 +55,9 @@ vi.mock("../src/domains/browser/cloudwatch", () => {
 });
 
 describe("P2 order and chaining", () => {
-  it("runs SQL -> Swagger -> Cloudwatch and resolves placeholders in order", async () => {
+  it("runs SQL -> API -> Browser and resolves placeholders in order", async () => {
     calls.length = 0;
-    cloudwatchActions = [];
+    browserActions = [];
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "automacao-"));
     const outDir = path.join(tempRoot, "runs");
     const behaviorsPath = path.join(tempRoot, "behaviors.json");
@@ -63,8 +66,7 @@ describe("P2 order and chaining", () => {
       behaviorsPath,
       JSON.stringify({
         behaviors: {
-          swagger: { actions: [] },
-          cloudwatch: {
+          browser: {
             actions: [{ type: "goto", url: "https://httpbin.org/anything?cid={correlationId}" }]
           }
         }
@@ -75,6 +77,7 @@ describe("P2 order and chaining", () => {
     const plan: Plan = {
       metadata: { feature: "order" },
       behaviorsPath,
+      curlPath: "examples/api/get-post.curl",
       steps: [
         {
           id: "sql",
@@ -82,16 +85,14 @@ describe("P2 order and chaining", () => {
           config: { sql: { queryPath: "query.sql", resultPath: "result.csv" } }
         },
         {
-          id: "swagger",
-          type: "swagger",
-          behaviorId: "swagger",
-          config: { operationId: "getTodoById", responseSelector: "#resp" },
-          exports: { correlationId: { source: "responseText", jsonPath: "correlationId" } }
+          id: "api",
+          type: "api",
+          exports: { correlationId: { source: "responseData", jsonPath: "correlationId" } }
         },
         {
-          id: "cloudwatch",
-          type: "cloudwatch",
-          behaviorId: "cloudwatch",
+          id: "browser",
+          type: "browser",
+          behaviorId: "browser",
           requires: ["correlationId"]
         }
       ]
@@ -99,13 +100,13 @@ describe("P2 order and chaining", () => {
 
     await executePlan(plan, outDir);
 
-    expect(calls).toEqual(["sql", "swagger", "cloudwatch"]);
-    expect(cloudwatchActions[0].url).toBe("https://httpbin.org/anything?cid=corr-123");
+    expect(calls).toEqual(["sql", "api", "browser"]);
+    expect(browserActions[0].url).toBe("https://httpbin.org/anything?cid=corr-123");
   });
 
-  it("fails fast when cloudwatch runs before swagger and requires missing context", async () => {
+  it("fails fast when browser runs before api and requires missing context", async () => {
     calls.length = 0;
-    cloudwatchActions = [];
+    browserActions = [];
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "automacao-"));
     const outDir = path.join(tempRoot, "runs");
     const behaviorsPath = path.join(tempRoot, "behaviors.json");
@@ -114,8 +115,7 @@ describe("P2 order and chaining", () => {
       behaviorsPath,
       JSON.stringify({
         behaviors: {
-          swagger: { actions: [] },
-          cloudwatch: { actions: [{ type: "goto", url: "https://httpbin.org/anything?cid={correlationId}" }] }
+          browser: { actions: [{ type: "goto", url: "https://httpbin.org/anything?cid={correlationId}" }] }
         }
       }),
       "utf-8"
@@ -124,18 +124,17 @@ describe("P2 order and chaining", () => {
     const plan: Plan = {
       metadata: { feature: "order" },
       behaviorsPath,
+      curlPath: "examples/api/get-post.curl",
       steps: [
         {
-          id: "cloudwatch",
-          type: "cloudwatch",
-          behaviorId: "cloudwatch",
+          id: "browser",
+          type: "browser",
+          behaviorId: "browser",
           requires: ["correlationId"]
         },
         {
-          id: "swagger",
-          type: "swagger",
-          behaviorId: "swagger",
-          config: { operationId: "getTodoById", responseSelector: "#resp" }
+          id: "api",
+          type: "api"
         }
       ]
     };
@@ -144,7 +143,7 @@ describe("P2 order and chaining", () => {
 
     expect(calls).toEqual([]);
     const runDir = path.join(outDir, (await fs.readdir(outDir))[0]);
-    const stepDir = path.join(runDir, "steps", "01_cloudwatch");
+    const stepDir = path.join(runDir, "steps", "01_browser");
     const metadata = JSON.parse(await fs.readFile(path.join(stepDir, "metadata.json"), "utf-8"));
     expect(metadata.status).toBe("FAIL");
   });

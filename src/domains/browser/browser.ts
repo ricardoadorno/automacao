@@ -1,28 +1,61 @@
 import path from "path";
-import { chromium } from "playwright";
 import { runActions } from "./actions";
 import { BehaviorAction } from "./behaviors";
+import { captureScreenshots } from "./capture";
+import { BrowserOptions, closeSession, createSession } from "./session";
+import { applyViewport, applyZoom } from "./viewport";
+import { PlanStep } from "../../core/types";
 
 interface BrowserStepResult {
   screenshotPath: string;
+  screenshotPaths: string[];
+  attempts: number;
 }
 
 export async function executeBrowserStep(
+  step: PlanStep,
   actions: BehaviorAction[],
-  stepDir: string
+  stepDir: string,
+  options?: BrowserOptions
 ): Promise<BrowserStepResult> {
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
+  const retries = step.config?.retries ?? 0;
+  const retryDelayMs = step.config?.retryDelayMs ?? 1000;
+  const sessionOptions = step.config?.browser?.viewport
+    ? { ...options, viewport: step.config.browser.viewport }
+    : options;
 
-  try {
-    await runActions(page, actions);
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const session = await createSession(sessionOptions);
+    try {
+      if (step.config?.browser?.viewport) {
+        await applyViewport(session.page, step.config.browser.viewport);
+      }
+      if (typeof step.config?.browser?.zoom === "number") {
+        await applyZoom(session.page, step.config.browser.zoom);
+      }
 
-    const screenshotPath = path.join(stepDir, "screenshot.png");
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-    return { screenshotPath };
-  } finally {
-    await browser.close();
+      await runActions(session.page, actions);
+
+      const screenshotPaths = await captureScreenshots(
+        session.page,
+        stepDir,
+        step.config?.browser?.capture
+      );
+      const screenshotPath = screenshotPaths[0] ?? path.join(stepDir, "screenshot.png");
+
+      await closeSession(session);
+      return { screenshotPath, screenshotPaths, attempts: attempt + 1 };
+    } catch (error) {
+      lastError = error;
+      await closeSession(session);
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
   }
+
+  throw lastError ?? new Error("browser step failed");
 }
 
  

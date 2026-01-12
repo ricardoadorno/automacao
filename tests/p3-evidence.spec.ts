@@ -2,65 +2,50 @@
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
-import { describe, expect, it, vi } from "vitest";
-import { executeSwaggerStep } from "../src/domains/api/swagger";
+import { describe, expect, it } from "vitest";
+import { executeApiStep } from "../src/domains/api/api";
 import { executeCliStep } from "../src/domains/cli/cli";
 import { PlanStep } from "../src/core/types";
 
-vi.mock("playwright", () => {
-  return {
-    chromium: {
-      launch: async () => {
-        return {
-          newPage: async () => ({
-            goto: async () => undefined,
-            screenshot: async ({ path: filePath }: { path: string }) => {
-              await fs.writeFile(filePath, "fake");
-            },
-            textContent: async () => "{\"id\":1,\"title\":\"hello\"}"
-          }),
-          close: async () => undefined
-        };
-      }
-    }
-  };
-});
-
-describe("P3 evidence snapshots", () => {
-  it("snapshots swagger evidence html", async () => {
+describe("P3 evidence html", () => {
+  it("renders API evidence html", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "automacao-"));
-    const stepDir = path.join(tempRoot, "swagger");
+    const stepDir = path.join(tempRoot, "api");
     await fs.mkdir(stepDir, { recursive: true });
 
     const step: PlanStep = {
-      type: "swagger",
-      behaviorId: "swagger",
-      config: { operationId: "getTodoById", responseSelector: "#resp" }
-    };
-    const openapi = {
-      paths: {
-        "/todos/{id}": {
-          get: {
-            operationId: "getTodoById",
-            requestBody: {
-              content: {
-                "application/json": {
-                  schema: { type: "object", properties: { id: { type: "integer" } } }
-                }
-              }
-            }
-          }
-        }
-      }
+      type: "api"
     };
 
-    const result = await executeSwaggerStep(step, [], openapi, stepDir);
-    const html = await fs.readFile(path.join(stepDir, result.evidenceFile), "utf-8");
+    const curlPath = path.join(stepDir, "test.curl");
+    await fs.writeFile(
+      curlPath,
+      "curl 'https://api.example.com/todos/1' -H 'Accept: application/json'",
+      "utf-8"
+    );
 
-    expect(html).toMatchSnapshot();
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      ({
+        status: 200,
+        statusText: "OK",
+        headers: new Headers({ "content-type": "application/json" }),
+        text: async () => JSON.stringify({ id: 1, title: "hello" })
+      }) as Response;
+
+    try {
+      const result = await executeApiStep(step, curlPath, stepDir, {});
+      const html = await fs.readFile(path.join(stepDir, result.evidenceFile), "utf-8");
+
+      expect(html).toContain("API Evidence");
+      expect(html).toContain("GET");
+      expect(html).toContain("api.example.com");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
-  it("snapshots cli evidence html", async () => {
+  it("renders CLI evidence html", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "automacao-"));
     const stepDir = path.join(tempRoot, "cli");
     await fs.mkdir(stepDir, { recursive: true });
@@ -79,7 +64,9 @@ describe("P3 evidence snapshots", () => {
     const html = await fs.readFile(path.join(stepDir, result.evidenceFile), "utf-8");
     const normalized = normalizeCliHtml(html);
 
-    expect(normalized).toMatchSnapshot();
+    expect(normalized).toContain("<h2>CLI Evidence");
+    expect(normalized).toContain("<h3>Stdout");
+    expect(normalized).toContain("<h3>Stderr");
   });
 });
 

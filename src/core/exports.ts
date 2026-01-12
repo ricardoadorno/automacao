@@ -4,6 +4,7 @@ import { ExportRule } from "./types";
 export interface ExportSources {
   sqlRows?: Array<Record<string, string>>;
   responseText?: string;
+  responseData?: unknown;
   stdout?: string;
   stderr?: string;
 }
@@ -42,6 +43,10 @@ function extractValue(rule: ExportRule, sources: ExportSources): string {
     return extractTextValue("responseText", sources.responseText ?? "", rule);
   }
 
+  if (rule.source === "responseData") {
+    return extractDataValue("responseData", sources.responseData, rule);
+  }
+
   if (rule.source === "stdout") {
     return extractTextValue("stdout", sources.stdout ?? "", rule);
   }
@@ -70,6 +75,25 @@ function extractTextValue(source: string, text: string, rule: { regex?: string; 
     return String(value);
   }
   throw new Error(`${source} export requires regex or jsonPath`);
+}
+
+function extractDataValue(source: string, data: unknown, rule: { regex?: string; jsonPath?: string }): string {
+  if (rule.jsonPath) {
+    const value = getByJsonPath(data, rule.jsonPath);
+    if (value === undefined || value === null) {
+      throw new Error(`jsonPath not found: ${rule.jsonPath}`);
+    }
+    return String(value);
+  }
+  if (rule.regex) {
+    const text = typeof data === "string" ? data : JSON.stringify(data);
+    const match = new RegExp(rule.regex).exec(text);
+    if (!match || !match[1]) {
+      throw new Error(`regex did not match for export: ${rule.regex}`);
+    }
+    return match[1];
+  }
+  throw new Error(`${source} export requires jsonPath or regex`);
 }
 
 function getByJsonPath(value: unknown, path: string): unknown {

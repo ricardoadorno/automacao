@@ -8,17 +8,20 @@ This guide describes how to work in this repository. Keep changes small, follow 
 - `tests/`: Vitest tests, named by priority (`p0-*.spec.ts`, `p1-*.spec.ts`, etc.).
 - `README.md`: product and TDD roadmap.
 - `package.json`, `tsconfig.json`: build and runtime configuration.
+- `scripts/`: dashboard and auxiliary tooling.
 
 ## Build, Test, and Development Commands
 
 - `npm start -- --plan path/to/plan.json --out runs`
   - Compiles TypeScript and runs the CLI executor.
+- `npm run dashboard`
+  - Starts the GUI dashboard for running plans and browsing results.
 - `npm test`
   - Runs Vitest in node mode.
 
 Example plan run:
 ```
-npm start -- --plan examples/plan.json --out runs
+npm start -- --plan examples/api/plan.json --out runs
 ```
 
 ## Coding Style & Naming Conventions

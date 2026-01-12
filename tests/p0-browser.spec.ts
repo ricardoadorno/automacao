@@ -8,10 +8,10 @@ import { Plan } from "../src/core/types";
 
 vi.mock("../src/domains/browser/browser", () => {
   return {
-    executeBrowserStep: async (_actions: unknown, stepDir: string) => {
+    executeBrowserStep: async (_step: unknown, _actions: unknown, stepDir: string) => {
       const screenshotPath = path.join(stepDir, "screenshot.png");
       await fs.writeFile(screenshotPath, "fake");
-      return { screenshotPath };
+      return { screenshotPath, screenshotPaths: [screenshotPath], attempts: 1 };
     }
   };
 });

@@ -53,7 +53,11 @@ describe("P0.2 failure handling", () => {
 
   it("continues on failure when failPolicy=continue", async () => {
     executeBrowserStep.mockRejectedValueOnce(new Error("boom"));
-    executeBrowserStep.mockResolvedValueOnce({ screenshotPath: "screenshot.png" });
+    executeBrowserStep.mockResolvedValueOnce({
+      screenshotPath: "screenshot.png",
+      screenshotPaths: ["screenshot.png"],
+      attempts: 1
+    });
 
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "automacao-"));
     const outDir = path.join(tempRoot, "runs");

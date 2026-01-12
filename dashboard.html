@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Automation Dashboard</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      font-size: 14px;
+    }
+    
+    .header {
+      background: #333;
+      color: white;
+      padding: 16px 24px;
+      border-bottom: 1px solid #ddd;
+    }
+    
+    .header h1 {
+      font-size: 20px;
+      font-weight: normal;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+    
+    .nav-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+      background: white;
+      border: 1px solid #ddd;
+    }
+    
+    .nav-tab {
+      padding: 10px 16px;
+      background: white;
+      border: none;
+      border-right: 1px solid #ddd;
+      cursor: pointer;
+      font-size: 13px;
+      color: #666;
+    }
+    
+    .nav-tab:hover {
+      background: #f9f9f9;
+    }
+    
+    .nav-tab.active {
+      background: #333;
+      color: white;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+    
+    .plans-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    
+    .plan-card {
+      background: white;
+      border: 1px solid #ddd;
+      padding: 12px;
+      cursor: pointer;
+    }
+    
+    .plan-card:hover {
+      border-color: #333;
+    }
+    
+    .plan-card .feature {
+      font-size: 14px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 6px;
+    }
+    
+    .plan-card .path {
+      font-size: 11px;
+      color: #999;
+      margin-bottom: 8px;
+      font-family: monospace;
+    }
+    
+    .plan-card .meta {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+    
+    .plan-card .actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    
+    .btn {
+      padding: 6px 12px;
+      border: 1px solid #ddd;
+      background: white;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    
+    .btn-primary {
+      background: #333;
+      color: white;
+      border-color: #333;
+    }
+    
+    .btn-primary:hover {
+      background: #000;
+    }
+    
+    .btn:disabled {
+      background: #eee;
+      cursor: not-allowed;
+    }
+    
+    .execution-card {
+      background: white;
+      border: 1px solid #ddd;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    
+    .execution-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 13px;
+    }
+    
+    .execution-status {
+      padding: 2px 8px;
+      font-size: 11px;
+      background: #eee;
+      border: 1px solid #ddd;
+    }
+    
+    .status-running { background: #fff3cd; }
+    .status-completed { background: #d4edda; }
+    .status-failed { background: #f8d7da; }
+    
+    .execution-output {
+      background: #f5f5f5;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 11px;
+      max-height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      border: 1px solid #ddd;
+    }
+    
+    .recent-runs {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .run-card {
+      background: white;
+      border: 1px solid #ddd;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+    
+    .run-card:hover {
+      border-color: #333;
+    }
+    
+    .run-info {
+      flex: 1;
+    }
+    
+    .run-id {
+      font-size: 13px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 4px;
+    }
+    
+    .run-feature {
+      font-size: 12px;
+      color: #666;
+    }
+    
+    .run-stats {
+      display: flex;
+      gap: 8px;
+      font-size: 12px;
+    }
+    
+    .stat-badge {
+      padding: 2px 6px;
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+    }
+    
+    .loading {
+      padding: 20px;
+      color: #666;
+      font-size: 13px;
+    }
+    
+    .empty-state {
+      padding: 40px;
+      background: white;
+      border: 1px solid #ddd;
+      text-align: center;
+      color: #999;
+      font-size: 13px;
+    }
+    
+    .toast {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      background: white;
+      padding: 10px 16px;
+      border: 1px solid #ddd;
+      display: none;
+      font-size: 13px;
+      z-index: 1000;
+    }
+    
+    .toast.show {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="container">
+      <h1>Test Automation Dashboard</h1>
+    </div>
+  </div>
+  
+  <div class="container">
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-tab="plans">Plans</button>
+      <button class="nav-tab" data-tab="executions">Running</button>
+      <button class="nav-tab" data-tab="results">Results</button>
+    </div>
+    
+    <!-- Test Plans Tab -->
+    <div class="tab-content active" id="plans-tab">
+      <div class="loading" id="plans-loading">Loading...</div>
+      <div class="plans-grid" id="plans-grid"></div>
+    </div>
+    
+    <!-- Running Executions Tab -->
+    <div class="tab-content" id="executions-tab">
+      <div id="executions-list"></div>
+    </div>
+    
+    <!-- Recent Results Tab -->
+    <div class="tab-content" id="results-tab">
+      <div class="loading" id="results-loading">Loading...</div>
+      <div class="recent-runs" id="results-list"></div>
+    </div>
+  </div>
+  
+  <div class="toast" id="toast">
+    <span id="toast-message">Action completed</span>
+  </div>
+  
+  <script>
+    // State
+    const state = {
+      plans: [],
+      executions: {},
+      runs: []
+    };
+    
+    // Tab switching
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        
+        // Update active tab
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        
+        // Update active content
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        document.getElementById(`${tabName}-tab`).classList.add('active');
+        
+        // Load data for tab
+        if (tabName === 'plans') loadPlans();
+        if (tabName === 'results') loadResults();
+      });
+    });
+    
+    // Load plans
+    async function loadPlans() {
+      try {
+        const response = await fetch('/api/plans');
+        const data = await response.json();
+        state.plans = data.plans;
+        renderPlans();
+      } catch (error) {
+        showToast('Failed to load plans');
+      }
+    }
+    
+    // Render plans
+    function renderPlans() {
+      const loading = document.getElementById('plans-loading');
+      const grid = document.getElementById('plans-grid');
+      
+      loading.style.display = 'none';
+      
+      if (state.plans.length === 0) {
+        grid.innerHTML = '<div class="empty-state">No plans found</div>';
+        return;
+      }
+      
+      grid.innerHTML = state.plans.map(plan => `
+        <div class="plan-card">
+          <div class="feature">${escapeHtml(plan.feature)}</div>
+          <div class="path">${escapeHtml(plan.path)}</div>
+          <div class="meta">${plan.stepsCount} steps</div>
+          <div class="actions">
+            <button class="btn btn-primary" onclick="runPlan('${plan.path}')">Run</button>
+          </div>
+        </div>
+      `).join('');
+    }
+    
+    // Run plan
+    async function runPlan(planPath) {
+      try {
+        const response = await fetch('/api/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planPath })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          state.executions[data.executionId] = {
+            planPath,
+            status: 'running',
+            startedAt: new Date().toISOString()
+          };
+          
+          showToast(`Execution started: ${planPath}`);
+          
+          // Switch to executions tab
+          document.querySelector('[data-tab="executions"]').click();
+          
+          // Start monitoring
+          monitorExecution(data.executionId);
+        } else {
+          showToast(data.error || 'Failed to start execution');
+        }
+      } catch (error) {
+        showToast('Failed to start execution');
+      }
+    }
+    
+    // Monitor execution
+    async function monitorExecution(executionId) {
+      const interval = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/status?id=${executionId}`);
+          const data = await response.json();
+          
+          state.executions[executionId] = data;
+          renderExecutions();
+          
+          if (data.status !== 'running') {
+            clearInterval(interval);
+            showToast(`Execution ${data.status}: ${data.planPath}`);
+            loadResults();
+          }
+        } catch (error) {
+          clearInterval(interval);
+        }
+      }, 2000);
+    }
+    
+    // Render executions
+    function renderExecutions() {
+      const list = document.getElementById('executions-list');
+      const executions = Object.entries(state.executions);
+      
+      if (executions.length === 0) {
+        list.innerHTML = '<div class="empty-state">No running executions</div>';
+        return;
+      }
+      
+      list.innerHTML = executions.map(([id, exec]) => `
+        <div class="execution-card">
+          <div class="execution-header">
+            <strong>${escapeHtml(exec.planPath)}</strong>
+            <span class="execution-status status-${exec.status}">${exec.status}</span>
+          </div>
+          ${exec.output && exec.output.length > 0 ? `
+            <div class="execution-output">${escapeHtml(exec.output.join('').slice(-1000))}</div>
+          ` : ''}
+        </div>
+      `).join('');
+    }
+    
+    // Load results
+    async function loadResults() {
+      try {
+        const response = await fetch('/api/runs');
+        const data = await response.json();
+        state.runs = data.runs;
+        renderResults();
+      } catch (error) {
+        showToast('Failed to load results');
+      }
+    }
+    
+    // Render results
+    function renderResults() {
+      const loading = document.getElementById('results-loading');
+      const list = document.getElementById('results-list');
+      
+      loading.style.display = 'none';
+      
+      if (state.runs.length === 0) {
+        list.innerHTML = '<div class="empty-state">No results yet</div>';
+        return;
+      }
+      
+      list.innerHTML = state.runs.map(run => {
+        return `
+          <div class="run-card" onclick="window.location.href='/runs/${run.runId}/index.html'">
+            <div class="run-info">
+              <div class="run-id">${escapeHtml(run.runId)}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+    
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      const msg = document.getElementById('toast-message');
+      
+      msg.textContent = message;
+      toast.className = 'toast show';
+      
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+    
+    // Initialize
+    loadPlans();
+  </script>
+</body>
+</html>

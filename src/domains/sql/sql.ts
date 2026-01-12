@@ -1,7 +1,8 @@
 import { promises as fs } from "fs";
 import path from "path";
 import { chromium } from "playwright";
-import Database from "better-sqlite3";
+import DatabaseConstructor from "better-sqlite3";
+import mysql, { Connection } from "mysql2/promise";
 import { PlanStep } from "../../core/types";
 
 interface SqlEvidenceResult {
@@ -18,6 +19,13 @@ interface CsvData {
   headers: string[];
   rows: string[][];
 }
+
+type SqliteDatabase = InstanceType<typeof DatabaseConstructor>;
+type MysqlConfig = NonNullable<NonNullable<NonNullable<PlanStep["config"]>["sql"]>["mysql"]>;
+
+const sqliteConnections = new Map<string, SqliteDatabase>();
+let mysqlConnection: Connection | null = null;
+let mysqlConnectionKey = "";
 
 export async function executeSqlEvidenceStep(step: PlanStep, stepDir: string): Promise<SqlEvidenceResult> {
   const sqlConfig = step.config?.sql;
@@ -47,13 +55,29 @@ export async function executeSqlEvidenceStep(step: PlanStep, stepDir: string): P
     await fs.writeFile(queryOut, sqlConfig.query, "utf-8");
     queryText = sqlConfig.query;
 
-    const db = new Database(path.resolve(sqlConfig.dbPath));
-    try {
-      const rows = db.prepare(sqlConfig.query).all() as Array<Record<string, unknown>>;
-      resultRaw = rowsToCsv(rows);
-    } finally {
-      db.close();
+    const db = getSqliteConnection(sqlConfig.dbPath);
+    const rows = db.prepare(sqlConfig.query).all() as Array<Record<string, unknown>>;
+    resultRaw = rowsToCsv(rows);
+
+    await fs.writeFile(resultOut, resultRaw, "utf-8");
+    queryFile = path.basename(queryOut);
+    resultFile = path.basename(resultOut);
+    parsed = parseResult(resultFile, resultRaw);
+  } else if (adapter === "mysql") {
+    if (!sqlConfig.mysql) {
+      throw new Error("mysql adapter requires config.sql.mysql");
     }
+    if (!sqlConfig.query) {
+      throw new Error("mysql adapter requires config.sql.query");
+    }
+    queryOut = path.join(stepDir, "query.sql");
+    resultOut = path.join(stepDir, "result.csv");
+    await fs.writeFile(queryOut, sqlConfig.query, "utf-8");
+    queryText = sqlConfig.query;
+
+    const connection = await getMysqlConnection(sqlConfig.mysql);
+    const [rows] = await connection.execute(sqlConfig.query);
+    resultRaw = rowsToCsv(rows as Array<Record<string, unknown>>);
 
     await fs.writeFile(resultOut, resultRaw, "utf-8");
     queryFile = path.basename(queryOut);
@@ -105,6 +129,18 @@ export async function executeSqlEvidenceStep(step: PlanStep, stepDir: string): P
     rows: rowCount,
     rowsData
   };
+}
+
+export async function closeSqlConnections(): Promise<void> {
+  for (const db of sqliteConnections.values()) {
+    db.close();
+  }
+  sqliteConnections.clear();
+  if (mysqlConnection) {
+    await mysqlConnection.end();
+    mysqlConnection = null;
+    mysqlConnectionKey = "";
+  }
 }
 
 type ParsedResult =
@@ -198,6 +234,43 @@ function rowsToCsv(rows: Array<Record<string, unknown>>): string {
     ...rows.map((row) => headers.map((header) => escapeCsv(String(row[header] ?? ""))).join(","))
   ];
   return lines.join("\n");
+}
+
+function getSqliteConnection(dbPath: string): SqliteDatabase {
+  const key = path.resolve(dbPath);
+  const cached = sqliteConnections.get(key);
+  if (cached) {
+    return cached;
+  }
+  const db = new DatabaseConstructor(key);
+  sqliteConnections.set(key, db);
+  return db;
+}
+
+async function getMysqlConnection(config: MysqlConfig): Promise<Connection> {
+  const key = [
+    config.host,
+    config.port ?? 3306,
+    config.user,
+    config.database
+  ].join("|");
+  if (mysqlConnection && mysqlConnectionKey === key) {
+    return mysqlConnection;
+  }
+  if (mysqlConnection) {
+    await mysqlConnection.end();
+    mysqlConnection = null;
+    mysqlConnectionKey = "";
+  }
+  mysqlConnection = await mysql.createConnection({
+    host: config.host,
+    port: config.port ?? 3306,
+    user: config.user,
+    password: config.password,
+    database: config.database
+  });
+  mysqlConnectionKey = key;
+  return mysqlConnection;
 }
 
 function escapeCsv(value: string): string {

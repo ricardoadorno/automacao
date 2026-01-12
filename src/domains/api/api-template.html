@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Evidence - {{STEP_ID}}</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 24px;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 32px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .header .subtitle {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+
+    .content {
+      padding: 32px;
+    }
+
+    .section {
+      margin-bottom: 32px;
+    }
+
+    .section-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #333;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #667eea;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-title .icon {
+      font-size: 24px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .info-card {
+      background: #f8f9fa;
+      border-left: 4px solid #667eea;
+      padding: 16px;
+      border-radius: 8px;
+    }
+
+    .info-card .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #666;
+      font-weight: 600;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .info-card .value {
+      font-size: 16px;
+      color: #333;
+      font-weight: 500;
+      word-break: break-all;
+    }
+
+    .method-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+
+    .method-get { background: #28a745; color: white; }
+    .method-post { background: #007bff; color: white; }
+    .method-put { background: #ffc107; color: #333; }
+    .method-patch { background: #17a2b8; color: white; }
+    .method-delete { background: #dc3545; color: white; }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .status-2xx { background: #28a745; color: white; }
+    .status-3xx { background: #17a2b8; color: white; }
+    .status-4xx { background: #ffc107; color: #333; }
+    .status-5xx { background: #dc3545; color: white; }
+
+    .code-block {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      position: relative;
+    }
+
+    .code-block pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .code-block .copy-btn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    .code-block .copy-btn:hover {
+      background: #5568d3;
+    }
+
+    .headers-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #f8f9fa;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .headers-table th,
+    .headers-table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid #dee2e6;
+    }
+
+    .headers-table th {
+      background: #667eea;
+      color: white;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .headers-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .headers-table td:first-child {
+      font-weight: 600;
+      color: #667eea;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+      font-style: italic;
+    }
+
+    .json-key { color: #9cdcfe; }
+    .json-string { color: #ce9178; }
+    .json-number { color: #b5cea8; }
+    .json-boolean { color: #569cd6; }
+    .json-null { color: #569cd6; }
+
+    .footer {
+      background: #f8f9fa;
+      padding: 20px 32px;
+      text-align: center;
+      color: #666;
+      font-size: 14px;
+      border-top: 1px solid #dee2e6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚀 API Evidence</h1>
+      <div class="subtitle">Step: {{STEP_ID}}</div>
+    </div>
+
+    <div class="content">
+      <!-- Request Info Section -->
+      <div class="section">
+        <h2 class="section-title">
+          <span class="icon">📤</span>
+          Request Information
+        </h2>
+        <div class="info-grid">
+          <div class="info-card">
+            <div class="label">Method</div>
+            <div class="value">
+              <span class="method-badge method-{{METHOD_LOWER}}">{{METHOD}}</span>
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="label">URL</div>
+            <div class="value">{{URL}}</div>
+          </div>
+          <div class="info-card">
+            <div class="label">Timestamp</div>
+            <div class="value">{{TIMESTAMP}}</div>
+          </div>
+          <div class="info-card">
+            <div class="label">Duration</div>
+            <div class="value">{{DURATION}}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Request Headers Section -->
+      <div class="section">
+        <h2 class="section-title">
+          <span class="icon">📋</span>
+          Request Headers
+        </h2>
+        {{REQUEST_HEADERS_TABLE}}
+      </div>
+
+      <!-- Request Body Section -->
+      <div class="section">
+        <h2 class="section-title">
+          <span class="icon">📦</span>
+          Request Body
+        </h2>
+        {{REQUEST_BODY}}
+      </div>
+
+      <!-- Response Info Section -->
+      <div class="section">
+        <h2 class="section-title">
+          <span class="icon">📥</span>
+          Response Information
+        </h2>
+        <div class="info-grid">
+          <div class="info-card">
+            <div class="label">Status Code</div>
+            <div class="value">
+              <span class="status-badge status-{{STATUS_CLASS}}">{{STATUS_CODE}} {{STATUS_TEXT}}</span>
+            </div>
+          </div>
+          <div class="info-card">
+            <div class="label">Content-Type</div>
+            <div class="value">{{CONTENT_TYPE}}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Response Headers Section -->
+      <div class="section">
+        <h2 class="section-title">
+          <span class="icon">📋</span>
+          Response Headers
+        </h2>
+        {{RESPONSE_HEADERS_TABLE}}
+      </div>
+
+      <!-- Response Body Section -->
+      <div class="section">
+        <h2 class="section-title">
+          <span class="icon">📄</span>
+          Response Body
+        </h2>
+        {{RESPONSE_BODY}}
+      </div>
+    </div>
+
+    <div class="footer">
+      Generated by Automation Framework • {{TIMESTAMP}}
+    </div>
+  </div>
+
+  <script>
+    // Copy to clipboard functionality
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        const codeBlock = this.parentElement.querySelector('pre');
+        navigator.clipboard.writeText(codeBlock.textContent);
+        this.textContent = '✓ Copied!';
+        setTimeout(() => {
+          this.textContent = 'Copy';
+        }, 2000);
+      });
+    });
+
+    // Syntax highlighting for JSON
+    function syntaxHighlight(json) {
+      if (typeof json !== 'string') {
+        json = JSON.stringify(json, null, 2);
+      }
+      json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+        let cls = 'json-number';
+        if (/^"/.test(match)) {
+          if (/:$/.test(match)) {
+            cls = 'json-key';
+          } else {
+            cls = 'json-string';
+          }
+        } else if (/true|false/.test(match)) {
+          cls = 'json-boolean';
+        } else if (/null/.test(match)) {
+          cls = 'json-null';
+        }
+        return '<span class="' + cls + '">' + match + '</span>';
+      });
+    }
+
+    // Apply syntax highlighting to all pre blocks with JSON
+    document.querySelectorAll('.code-block pre').forEach(pre => {
+      try {
+        const content = pre.textContent;
+        const parsed = JSON.parse(content);
+        pre.innerHTML = syntaxHighlight(parsed);
+      } catch (e) {
+        // Not JSON, leave as is
+      }
+    });
+  </script>
+</body>
+</html>

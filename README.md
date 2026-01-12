@@ -1,4 +1,4 @@
-# Diretrizes do projeto
+﻿# Diretrizes do projeto
 
 Este README define o que o produto faz e como devemos implementar. Use como guia unico para decisoes de design, estrutura e backlog.
 
@@ -6,10 +6,11 @@ Este README define o que o produto faz e como devemos implementar. Use como guia
 
 Construir um executor de evidencias que le um plano declarativo e gera um pacote de evidencias por feature, com:
 
-- evidencias de navegacao em browser (Front, Swagger UI, CloudWatch)
+- evidencias de navegacao em browser (Front, dashboards com filtros)
+- evidencias de API via curl (.curl)
 - evidencias de SQL por anexos (query + resultado) com print padronizado
 - encadeamento entre steps por variaveis extraidas (id, correlationId, timestamps)
-- modularidade por arquivos de configuracao (behaviors Playwright, selects SQL, OpenAPI)
+- modularidade por arquivos de configuracao (behaviors Playwright, curl, SQL presets)
 
 ## 2) Conceitos principais
 
@@ -19,7 +20,7 @@ O plano descreve:
 
 - metadata do run, feature, ticket, ambiente
 - lista ordenada de steps
-- referencias para configs externas: behaviors do Playwright, OpenAPI e SQL presets
+- referencias para configs externas: behaviors do Playwright, curl e SQL presets
 
 O plano nao descreve cliques detalhados. Ele descreve intencao, dependencias e artefatos esperados.
 
@@ -28,18 +29,36 @@ O plano nao descreve cliques detalhados. Ele descreve intencao, dependencias e a
 O agente deve suportar, no minimo:
 
 - browser: executa um behavior Playwright e captura screenshots
-- swagger: valida OpenAPI, executa behavior no Swagger UI, captura screenshots e pode extrair variaveis do response
-- cloudwatch: step browser especializado com filtros e retries
+- api: executa um curl, gera evidence HTML e exporta response
+- browser: step de navegacao com filtros, retries e captura configuravel
 - sqlEvidence: recebe query.sql + result.csv e gera evidencia verificavel com HTML renderizado, metadados simples e print
 - cli: executa um comando local, grava stdout/stderr e metadados simples
 
 Config basica por step (exemplos de campos):
 
 - browser: behaviorId
-- swagger: behaviorId, config.operationId ou config.path+config.method, config.responseSelector
-- cloudwatch: behaviorId, config.retries, config.retryDelayMs
+- api: usa curlPath no plan e exports de responseData/responseText
+- browser: behaviorId, config.retries, config.retryDelayMs, config.browser.capture
 - sqlEvidence: config.sql.queryPath, config.sql.resultPath, config.sql.expectRows
 - cli: config.cli.command, config.cli.args, config.cli.cwd, config.cli.timeoutMs
+
+Captura de telas (exemplo para tabelas horizontais):
+
+```json
+"config": {
+  "retries": 1,
+  "browser": {
+    "capture": {
+      "mode": "tiles",
+      "tiles": {
+        "direction": "horizontal",
+        "overlapPx": 120,
+        "waitMs": 200
+      }
+    }
+  }
+}
+```
 
 ### 2.3 Contexto do run e variaveis
 
@@ -49,17 +68,19 @@ O agente mantem um objeto context em memoria durante a execucao do plano.
 - cada step pode declarar requires (valores que precisam existir para executar)
 - qualquer string de configuracao pode usar placeholders do contexto
 
-Exemplos de placeholders:
+Exemplos de placeholders no plan:
 
 - {pedidoId}
 - {correlationId}
 - {startedAt}
 
+No curl, use `{{variavel}}` para interpolar valores no comando.
+
 Export rules (exemplos):
 
 - SQL: exports.pedidoId = { source: "sql", column: "id", row: 0 }
-- Swagger: exports.pedidoId = { source: "responseText", regex: "\"id\":\"(\\w+)\"" }
-- Swagger JSON: exports.pedidoId = { source: "responseText", jsonPath: "id" }
+- API JSON: exports.pedidoId = { source: "responseData", jsonPath: "id" }
+- API regex: exports.pedidoId = { source: "responseText", regex: "\"id\":\"(\\w+)\"" }
 - CLI: exports.rowCount = { source: "stdout", jsonPath: "rows" }
 
 ### 2.4 Artefatos por step
@@ -70,8 +91,10 @@ Para cada step, gerar no minimo:
 - screenshot.png (ou multiplos prints conforme definido)
 - em erro: error.json e error.png
 
-Para SQL evidence, adicionalmente:
+Para API:
+- evidence.html com request/response
 
+Para SQL evidence:
 - query.sql e result.csv copiados
 - evidence.html (inclui metadados simples como hora e tabela inferida)
 
@@ -84,13 +107,12 @@ Para SQL evidence, adicionalmente:
 - permite placeholders do contexto nos valores das acoes
 - behaviors devem ser reutilizaveis entre features
 
-### 3.2 OpenAPI JSON
+### 3.2 Curl (.curl)
 
-Usar o OpenAPI para:
+Usar `.curl` para definir chamadas de API:
 
-- validar se operationId ou path+method existe
-- ajudar a localizar a operacao no Swagger UI
-- reduzir risco de evidencia errada
+- `curlPath` no plan aponta para um arquivo `.curl`
+- cada step `api` usa o curl com interpolacao de `{{variavel}}`
 
 ### 3.3 SQL presets
 
@@ -101,7 +123,7 @@ Um preset SQL define:
 - regras de extracao (ex: pegar coluna id)
 - regras de mascaramento (ex: ocultar cpf)
 
-Por padrao, a execucao SQL usa arquivos de query e resultado (mock). O acesso a banco e desacoplado por adapters, com sqlite como opcao de entrada.
+Por padrao, a execucao SQL usa arquivos de query e resultado (mock). O acesso a banco e desacoplado por adapters, com sqlite e mysql como opcoes.
 
 ## 4) Fluxo de execucao do agente
 
@@ -110,7 +132,6 @@ Por padrao, a execucao SQL usa arquivos de query e resultado (mock). O acesso a 
 - carregar plan
 - validar schema do plan
 - carregar behaviors e indexar por behaviorId
-- carregar OpenAPI, se houver steps swagger
 - verificar existencia de arquivos SQL anexados, se houver
 - inicializar context com feature, ticket, env, runId e startedAt
 
@@ -140,10 +161,10 @@ Se qualquer step falhar:
 
 Implementado:
 - P0: runner basico, outputs, report e falha controlada
-- P1: SQL evidence por arquivos e SQLite, HTML + screenshot, expectRows
+- P1: SQL evidence por arquivos, SQLite e MySQL, HTML + screenshot, expectRows
 - P2: contexto, exports, requires e resolucao de placeholders
-- P3: validacao OpenAPI + captura de response; evidencia HTML do Swagger
-- P4: retries no CloudWatch com attempts
+- P3: API via curl + evidencia HTML
+- P4: retries no browser com attempts
 - P5.1/P5.2: CLI executa comando, logs, metadata, exports via stdout/stderr e evidencia HTML
 - P5.3: pipeline pre/script/post no CLI
 - P5.4: heuristica de erro (exitCode, stderr patterns, successCriteria)
@@ -165,8 +186,9 @@ Para cada step:
 - metadata.json padronizado
 - prints solicitados
 - em caso de erro: error.json e error.png
-- swagger evidencia: evidence.html com dados da requisicao e response
-- cli evidencia: evidence.html com comando, stdout e stderr
+
+Para api:
+- evidence.html com request/response
 
 Para sqlEvidence:
 
@@ -179,113 +201,55 @@ Para cli:
 
 - stdout.txt
 - stderr.txt
+- evidence.html
 
-## 7) Exemplo completo (mock local)
+## 7) Exemplos principais
 
-Este exemplo usa data URLs e arquivos mock para exercitar browser, sqlEvidence, swagger (OpenAPI) e cloudwatch.
-
-Rodar:
-
-```
-npx playwright install
-npm start -- --plan examples/plan.json --out runs
-```
-
-Verifique os artefatos em `runs/<runId>/index.html` e `runs/<runId>/steps/`.
-
-## 8) Exemplo com sites reais (requer internet)
-
-Este exemplo usa sites publicos para as capturas de tela, incluindo Swagger UI real.
-
-Rodar:
+API com curl:
 
 ```
-npx playwright install
-npm start -- --plan examples/real/plan.json --out runs
+npm start -- --plan examples/api/plan.json --out runs
 ```
 
-Notas:
-- O step swagger abre `https://petstore.swagger.io/` e tira print da UI real.
-- O step cloudwatch usa um site publico como stand-in para demonstrar retries e prints.
-
-## 9) JSONPlaceholder com payload/response detalhado
-
-Este exemplo faz GET direto no JSONPlaceholder e captura o response completo.
-
-Rodar:
+API -> SQLite -> Browser:
 
 ```
-npx playwright install
-npm start -- --plan examples/jsonplaceholder/plan.json --out runs
+npm start -- --plan examples/sqlite/plan.json --out runs
 ```
 
-Notas:
-- O response e capturado com `responseSelector: "body"` e aparece no metadata do step.
-
-## 10) Cenarios de ordem (SQL -> POST -> CloudWatch, etc.)
-
-Planos prontos para exercitar diferentes ordens e dependencias com Swagger UI real e filtros via URL.
-
-Rodar:
-
-```
-npx playwright install
-npm start -- --plan examples/order/plan-sql-post-cloudwatch.json --out runs
-npm start -- --plan examples/order/plan-swagger-get-cloudwatch.json --out runs
-npm start -- --plan examples/order/plan-cloudwatch-before-swagger.json --out runs
-```
-
-Notas:
-- Os planos usam a Swagger UI publica do Petstore para GET/POST (mais estavel para automacao).
-- O "cloudwatch" usa `https://httpbin.org/anything` como stand-in para filtros e prints.
-- O plano `plan-cloudwatch-before-swagger.json` deve falhar cedo por `requires` (exemplo de ordem invalida).
-
-## 11) JSONPlaceholder -> SQLite -> Search (requer internet)
-
-Fluxo:
-- GET no JSONPlaceholder
-- CloudWatch stand-in com retries
-- CLI cria arquivo JSON, apaga e repassa payload
-- CLI atualiza o SQLite
-- SQL evidence valida os dados
-- busca em site publico usando o output do SQLite
-
-Rodar:
-```
-npx playwright install
-npm start -- --plan examples/jsonplaceholder-sqlite/plan.json --out runs
-```
-
-## 12) Exemplo CLI (sem browser)
-
-Executa um comando simples e gera stdout/stderr como artefatos.
-
-Rodar:
+CLI simples:
 
 ```
 npm start -- --plan examples/cli/plan.json --out runs
 ```
 
-## 13) Exemplo CLI com fluxo de arquivos
-
-Fluxo: baixa um arquivo local, transforma, apaga e usa o conteudo no step final.
+MySQL + Chrome com sessao persistente:
 
 ```
-npm start -- --plan examples/cli-flow/plan.json --out runs
+npm start -- --plan examples/testando/plan.json --out runs
 ```
 
-## 14) Arquitetura por dominios (novo padrao)
+## 8) Dashboard (interface grafica)
+
+Para executar e monitorar runs pela interface grafica:
+
+```
+npm run dashboard
+```
+
+Abra `http://localhost:3000` e escolha um plano em `examples/`.
+
+## 9) Arquitetura por dominios (novo padrao)
 
 O codigo agora e organizado por dominios, para facilitar debug e extensao:
 
 - `src/core/`: orquestracao e utilitarios (runner, plan, types, context, exports, errors, utils)
-- `src/domains/browser/`: acoes Playwright, behaviors e steps baseados em browser (browser, cloudwatch)
-- `src/domains/api/`: validacao OpenAPI e step swagger
+- `src/domains/browser/`: acoes Playwright, behaviors e captura de telas no browser
+- `src/domains/api/`: execucao de curl e evidence HTML
 - `src/domains/sql/`: SQL evidence e renderizacao
+- `src/domains/cli/`: CLI runner e evidencia HTML
 
-## 15) Como estender daqui para frente
-
-## 16) Testes
+## 10) Testes
 
 Mapa de cobertura: `tests/TEST_MAP.md`
 E2E real usa Playwright e pode exigir `npx playwright install`.

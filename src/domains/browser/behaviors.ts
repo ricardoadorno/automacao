@@ -6,7 +6,12 @@ export type BehaviorAction =
   | { type: "click"; selector: string }
   | { type: "fill"; selector: string; text: string }
   | { type: "waitForSelector"; selector: string; state?: "attached" | "detached" | "visible" | "hidden" }
-  | { type: "waitForTimeout"; ms: number };
+  | { type: "waitForTimeout"; ms: number }
+  | { type: "waitForLoadState"; state?: "load" | "domcontentloaded" | "networkidle" }
+  | { type: "scrollTo"; x?: number; y?: number }
+  | { type: "scrollBy"; x?: number; y?: number }
+  | { type: "setViewport"; width: number; height: number; deviceScaleFactor?: number }
+  | { type: "setZoom"; scale: number };
 
 export interface BehaviorDefinition {
   actions: BehaviorAction[];

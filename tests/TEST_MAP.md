@@ -14,16 +14,17 @@ This file maps backlog goals to automated tests.
 
 ## P2 - variaveis e encadeamento
 - exports/requires + placeholders: `tests/p2-context.spec.ts`
-- ordem e encadeamento (SQL -> Swagger -> CloudWatch): `tests/p2-order.spec.ts`
+- ordem e encadeamento (SQL -> API -> Browser): `tests/p2-order.spec.ts`
 - exports via responseText/stdout/stderr: `tests/p2-exports.spec.ts`
 - e2e flow (CLI pipeline -> SQL -> browser): `tests/p2-e2e.spec.ts`
+- captura com tiles horizontais: `tests/p2-browser-capture.spec.ts`
 
-## P3 - OpenAPI integrado com Swagger UI
-- valida operationId + response capture: `tests/p3-openapi.spec.ts`
-- evidencia HTML do Swagger (snapshot): `tests/p3-evidence.spec.ts`
+## P3 - API com Curl
+- parse/interpolacao de curl + execucao: `tests/p2-api.spec.ts`
+- evidencia HTML do API/CLI: `tests/p3-evidence.spec.ts`
 
-## P4 - CloudWatch robusto
-- retries e attempts: `tests/p4-cloudwatch.spec.ts`
+## P4 - Browser robusto
+- retries e attempts: `tests/p4-browser.spec.ts`
 
 ## P5 - CLI runner
 - comando simples + logs + evidence: `tests/p5-cli.spec.ts`

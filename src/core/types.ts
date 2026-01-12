@@ -1,4 +1,4 @@
-export type StepType = "browser" | "swagger" | "cloudwatch" | "sqlEvidence" | "cli";
+export type StepType = "browser" | "api" | "sqlEvidence" | "cli";
 
 export type ExportRule =
   | {
@@ -7,7 +7,7 @@ export type ExportRule =
       row?: number;
     }
   | {
-      source: "responseText";
+      source: "responseText" | "responseData";
       regex?: string;
       jsonPath?: string;
     }
@@ -18,12 +18,26 @@ export type ExportRule =
     };
 
 export interface StepConfig {
-  operationId?: string;
-  path?: string;
-  method?: string;
-  responseSelector?: string;
   retries?: number;
   retryDelayMs?: number;
+  browser?: {
+    viewport?: {
+      width: number;
+      height: number;
+      deviceScaleFactor?: number;
+    };
+    zoom?: number;
+    capture?: {
+      mode?: "full" | "viewport" | "element" | "tiles";
+      selector?: string;
+      tiles?: {
+        direction?: "horizontal" | "vertical" | "both";
+        overlapPx?: number;
+        maxTiles?: number;
+        waitMs?: number;
+      };
+    };
+  };
   cli?: {
     command?: string;
     args?: string[];
@@ -47,9 +61,16 @@ export interface StepConfig {
     queryPath?: string;
     resultPath?: string;
     expectRows?: number;
-    adapter?: "sqlite";
+    adapter?: "sqlite" | "mysql";
     dbPath?: string;
     query?: string;
+    mysql?: {
+      host: string;
+      port?: number;
+      user: string;
+      password: string;
+      database: string;
+    };
   };
 }
 
@@ -73,8 +94,18 @@ export interface Plan {
   steps: PlanStep[];
   failPolicy?: "stop" | "continue";
   behaviorsPath?: string;
-  openapiPath?: string;
+  curlPath?: string;
   sqlPresetsPath?: string;
+  browser?: {
+    channel?: "chrome" | "msedge";
+    headless?: boolean;
+    userDataDir?: string;
+    viewport?: {
+      width: number;
+      height: number;
+      deviceScaleFactor?: number;
+    };
+  };
 }
 
 export interface StepResult {

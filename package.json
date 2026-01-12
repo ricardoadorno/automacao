@@ -8,10 +8,14 @@
   "scripts": {
     "start": "tsc -p tsconfig.json && node dist/index.js",
     "test": "vitest run",
-    "runs:index": "node scripts/generate-run-index.js"
+    "index": "node scripts/generate-run-index.js",
+    "serve": "node scripts/serve.js",
+    "view": "node scripts/generate-run-index.js && node scripts/serve.js",
+    "dashboard": "node scripts/dashboard.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
+    "mysql2": "^3.11.5",
     "playwright": "^1.42.1"
   },
   "devDependencies": {

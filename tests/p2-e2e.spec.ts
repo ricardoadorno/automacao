@@ -10,11 +10,11 @@ const browserCalls: unknown[] = [];
 
 vi.mock("../src/domains/browser/browser", () => {
   return {
-    executeBrowserStep: async (actions: unknown, stepDir: string) => {
+    executeBrowserStep: async (_step: unknown, actions: unknown, stepDir: string) => {
       browserCalls.push(actions);
       const screenshotPath = path.join(stepDir, "screenshot.png");
       await fs.writeFile(screenshotPath, "fake");
-      return { screenshotPath };
+      return { screenshotPath, screenshotPaths: [screenshotPath], attempts: 1 };
     }
   };
 });

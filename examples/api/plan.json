@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "feature": "API Testing with Curl",
+    "ticket": "API-001",
+    "env": "dev"
+  },
+  "curlPath": "examples/api/get-post.curl",
+  "failPolicy": "stop",
+  "steps": [
+    {
+      "id": "get-post",
+      "type": "api",
+      "exports": {
+        "postTitle": {
+          "source": "responseData",
+          "jsonPath": "title"
+        },
+        "postUserId": {
+          "source": "responseData",
+          "jsonPath": "userId"
+        }
+      }
+    }
+  ]
+}
