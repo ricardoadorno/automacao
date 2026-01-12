@@ -3,8 +3,8 @@ import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
-import { executeCloudwatchStep } from "../src/cloudwatch";
-import { PlanStep } from "../src/types";
+import { executeCloudwatchStep } from "../src/domains/browser/cloudwatch";
+import { PlanStep } from "../src/core/types";
 
 let attempt = 0;
 

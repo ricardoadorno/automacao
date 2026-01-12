@@ -1,8 +1,8 @@
 /// <reference types="vitest" />
 import { describe, expect, it } from "vitest";
-import { applyExports } from "../src/exports";
-import { Context } from "../src/context";
-import { ExportRule } from "../src/types";
+import { applyExports } from "../src/core/exports";
+import { Context } from "../src/core/context";
+import { ExportRule } from "../src/core/types";
 
 describe("P2 exports from response text", () => {
   it("extracts via regex", () => {

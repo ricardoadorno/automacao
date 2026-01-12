@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const plan_1 = require("./plan");
-const runner_1 = require("./runner");
+const plan_1 = require("./core/plan");
+const runner_1 = require("./core/runner");
 function readArg(flag) {
     const idx = process.argv.indexOf(flag);
     if (idx === -1) {

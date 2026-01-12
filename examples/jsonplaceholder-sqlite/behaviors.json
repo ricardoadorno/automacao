@@ -1,0 +1,34 @@
+{
+  "behaviors": {
+    "swagger-jsonplaceholder": {
+      "actions": [
+        {
+          "type": "goto",
+          "url": "https://jsonplaceholder.typicode.com/todos/1"
+        },
+        {
+          "type": "waitForSelector",
+          "selector": "body"
+        }
+      ]
+    },
+    "search-with-title": {
+      "actions": [
+        {
+          "type": "goto",
+          "url": "https://en.wikipedia.org/w/index.php?search={todoTitleSql}&title=Special:Search&fulltext=1"
+        },
+        {
+          "type": "waitForSelector",
+          "selector": "#mw-content-text",
+          "state": "visible"
+        },
+        {
+          "type": "waitForSelector",
+          "selector": "li.mw-search-result",
+          "state": "visible"
+        }
+      ]
+    }
+  }
+}

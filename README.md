@@ -1,13 +1,13 @@
 # Diretrizes do projeto
 
-Este README define o que o produto faz e como devemos implementar. Use como guia unico para decis?es de design, estrutura e backlog.
+Este README define o que o produto faz e como devemos implementar. Use como guia unico para decisoes de design, estrutura e backlog.
 
 ## 1) Objetivo do produto
 
 Construir um executor de evidencias que le um plano declarativo e gera um pacote de evidencias por feature, com:
 
 - evidencias de navegacao em browser (Front, Swagger UI, CloudWatch)
-- evidencias de SQL por anexos (query + resultado) com print padronizado e hashes
+- evidencias de SQL por anexos (query + resultado) com print padronizado
 - encadeamento entre steps por variaveis extraidas (id, correlationId, timestamps)
 - modularidade por arquivos de configuracao (behaviors Playwright, selects SQL, OpenAPI)
 
@@ -30,7 +30,7 @@ O agente deve suportar, no minimo:
 - browser: executa um behavior Playwright e captura screenshots
 - swagger: valida OpenAPI, executa behavior no Swagger UI, captura screenshots e pode extrair variaveis do response
 - cloudwatch: step browser especializado com filtros e retries
-- sqlEvidence: recebe query.sql + result.csv/json e gera evidencia verificavel com HTML renderizado e print
+- sqlEvidence: recebe query.sql + result.csv e gera evidencia verificavel com HTML renderizado, metadados simples e print
 
 Config basica por step (exemplos de campos):
 
@@ -69,9 +69,8 @@ Para cada step, gerar no minimo:
 
 Para SQL evidence, adicionalmente:
 
-- query.sql e result.csv/json copiados
-- evidence.html
-- hashes.json
+- query.sql e result.csv copiados
+- evidence.html (inclui metadados simples como hora e tabela inferida)
 
 ## 3) Entradas e modularidade
 
@@ -99,7 +98,7 @@ Um preset SQL define:
 - regras de extracao (ex: pegar coluna id)
 - regras de mascaramento (ex: ocultar cpf)
 
-Por padrao, a execucao SQL usa arquivos de query e resultado (mock). O acesso a banco deve ser desacoplado por adapters, com sqlite como opcao futura de entrada.
+Por padrao, a execucao SQL usa arquivos de query e resultado (mock). O acesso a banco e desacoplado por adapters, com sqlite como opcao de entrada.
 
 ## 4) Fluxo de execucao do agente
 
@@ -158,10 +157,9 @@ Para cada step:
 Para sqlEvidence:
 
 - query.sql
-- result.csv/json
+- result.csv
 - evidence.html
 - screenshot.png
-- hashes.json
 
 ## 7) Exemplo completo (mock local)
 
@@ -205,7 +203,7 @@ npm start -- --plan examples/jsonplaceholder/plan.json --out runs
 Notas:
 - O response e capturado com `responseSelector: "body"` e aparece no metadata do step.
 
-## 10) Cenários de ordem (SQL -> POST -> CloudWatch, etc.)
+## 10) Cenarios de ordem (SQL -> POST -> CloudWatch, etc.)
 
 Planos prontos para exercitar diferentes ordens e dependencias com Swagger UI real e filtros via URL.
 
@@ -222,3 +220,35 @@ Notas:
 - Os planos usam a Swagger UI publica do Petstore para GET/POST (mais estavel para automacao).
 - O "cloudwatch" usa `https://httpbin.org/anything` como stand-in para filtros e prints.
 - O plano `plan-cloudwatch-before-swagger.json` deve falhar cedo por `requires` (exemplo de ordem invalida).
+
+## 11) JSONPlaceholder -> SQLite -> Search (requer internet)
+
+Fluxo:
+- GET no JSONPlaceholder
+- SELECT no SQLite validando o titulo
+- busca em site publico usando o output do SQLite
+
+Rodar:
+```
+npx playwright install
+npm start -- --plan examples/jsonplaceholder-sqlite/plan.json --out runs
+```
+
+## 12) Arquitetura por dominios (novo padrao)
+
+O codigo agora e organizado por dominios, para facilitar debug e extensao:
+
+- `src/core/`: orquestracao e utilitarios (runner, plan, types, context, exports, errors, utils)
+- `src/domains/browser/`: acoes Playwright, behaviors e steps baseados em browser (browser, cloudwatch)
+- `src/domains/api/`: validacao OpenAPI e step swagger
+- `src/domains/sql/`: SQL evidence e renderizacao
+
+## 13) Como estender daqui para frente
+
+Padrao para adicionar um novo step ou comportamento:
+
+1) Defina o executor no dominio correto (`src/domains/<dominio>/`).
+2) Atualize `src/core/types.ts` com o novo tipo/config.
+3) Conecte o executor no `src/core/runner.ts`.
+4) Escreva testes em `tests/` seguindo o padrao `pX-*.spec.ts`.
+5) Documente o novo fluxo aqui e no `HOWTO.md` se for um exemplo executavel.

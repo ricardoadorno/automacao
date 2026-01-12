@@ -3,20 +3,19 @@ import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
-import { executePlan } from "../src/runner";
-import { Plan } from "../src/types";
+import { executePlan } from "../src/core/runner";
+import { Plan } from "../src/core/types";
 
 const calls: string[] = [];
 let cloudwatchActions: Array<{ type: string; url?: string }> = [];
 
-vi.mock("../src/sql", () => {
+vi.mock("../src/domains/sql/sql", () => {
   return {
     executeSqlEvidenceStep: async () => {
       calls.push("sql");
       return {
         files: [],
         screenshotPath: "screenshot.png",
-        hashesPath: "hashes.json",
         queryFile: "query.sql",
         resultFile: "result.csv",
         evidenceFile: "evidence.html",
@@ -27,7 +26,7 @@ vi.mock("../src/sql", () => {
   };
 });
 
-vi.mock("../src/swagger", () => {
+vi.mock("../src/domains/api/swagger", () => {
   return {
     executeSwaggerStep: async () => {
       calls.push("swagger");
@@ -39,7 +38,7 @@ vi.mock("../src/swagger", () => {
   };
 });
 
-vi.mock("../src/cloudwatch", () => {
+vi.mock("../src/domains/browser/cloudwatch", () => {
   return {
     executeCloudwatchStep: async (_step: unknown, actions: Array<{ type: string; url?: string }>) => {
       calls.push("cloudwatch");

@@ -7,7 +7,6 @@ exports.executeSqlEvidenceStep = executeSqlEvidenceStep;
 const fs_1 = require("fs");
 const path_1 = __importDefault(require("path"));
 const playwright_1 = require("playwright");
-const crypto_1 = require("crypto");
 const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 async function executeSqlEvidenceStep(step, stepDir) {
     const sqlConfig = step.config?.sql;
@@ -21,6 +20,8 @@ async function executeSqlEvidenceStep(step, stepDir) {
     let resultFile = "";
     let resultRaw = "";
     let parsed;
+    let queryText = "";
+    const executedAt = new Date().toISOString();
     if (adapter === "sqlite") {
         if (!sqlConfig.dbPath) {
             throw new Error("sqlite adapter requires config.sql.dbPath");
@@ -29,12 +30,13 @@ async function executeSqlEvidenceStep(step, stepDir) {
             throw new Error("sqlite adapter requires config.sql.query");
         }
         queryOut = path_1.default.join(stepDir, "query.sql");
-        resultOut = path_1.default.join(stepDir, "result.json");
+        resultOut = path_1.default.join(stepDir, "result.csv");
         await fs_1.promises.writeFile(queryOut, sqlConfig.query, "utf-8");
+        queryText = sqlConfig.query;
         const db = new better_sqlite3_1.default(path_1.default.resolve(sqlConfig.dbPath));
         try {
             const rows = db.prepare(sqlConfig.query).all();
-            resultRaw = JSON.stringify(rows, null, 2);
+            resultRaw = rowsToCsv(rows);
         }
         finally {
             db.close();
@@ -56,6 +58,7 @@ async function executeSqlEvidenceStep(step, stepDir) {
         resultOut = path_1.default.join(stepDir, resultFile);
         await fs_1.promises.copyFile(queryAbs, queryOut);
         await fs_1.promises.copyFile(resultAbs, resultOut);
+        queryText = await fs_1.promises.readFile(queryOut, "utf-8");
         resultRaw = await fs_1.promises.readFile(resultOut, "utf-8");
         parsed = parseResult(resultFile, resultRaw);
     }
@@ -65,22 +68,17 @@ async function executeSqlEvidenceStep(step, stepDir) {
         throw new Error(`Expected ${sqlConfig.expectRows} rows but got ${rowCount}`);
     }
     const evidenceHtmlPath = path_1.default.join(stepDir, "evidence.html");
-    const evidenceHtml = buildEvidenceHtml(parsed, resultFile);
+    const evidenceHtml = buildEvidenceHtml(parsed, resultFile, {
+        queryText,
+        executedAt
+    });
     await fs_1.promises.writeFile(evidenceHtmlPath, evidenceHtml, "utf-8");
     const evidenceFile = path_1.default.basename(evidenceHtmlPath);
     const screenshotPath = path_1.default.join(stepDir, "screenshot.png");
     await screenshotFile(evidenceHtmlPath, screenshotPath);
-    const hashesPath = path_1.default.join(stepDir, "hashes.json");
-    const hashes = {
-        query: await hashFile(queryOut),
-        result: await hashFile(resultOut),
-        evidenceHtml: await hashFile(evidenceHtmlPath)
-    };
-    await fs_1.promises.writeFile(hashesPath, JSON.stringify(hashes, null, 2), "utf-8");
     return {
         files: [queryOut, resultOut, evidenceHtmlPath],
         screenshotPath,
-        hashesPath,
         queryFile,
         resultFile,
         evidenceFile,
@@ -128,17 +126,76 @@ function toRowsData(parsed) {
         return record;
     });
 }
-function buildEvidenceHtml(parsed, resultName) {
-    if (parsed.type === "json") {
-        const jsonHtml = parsed.data.map((row) => `<pre>${escapeHtml(JSON.stringify(row, null, 2))}</pre>`).join("");
-        return wrapHtml(`<h2>${resultName}</h2>${jsonHtml}`);
-    }
-    const headers = parsed.data.headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("");
-    const rows = parsed.data.rows
-        .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+function buildEvidenceHtml(parsed, resultName, meta) {
+    const tableName = extractTableName(meta.queryText);
+    const metadataHtml = [
+        `<div><strong>Executed at:</strong> ${escapeHtml(meta.executedAt)}</div>`,
+        tableName ? `<div><strong>Table:</strong> ${escapeHtml(tableName)}</div>` : "",
+        `<div><strong>Query:</strong></div>`,
+        `<pre>${escapeHtml(meta.queryText.trim())}</pre>`
+    ]
+        .filter(Boolean)
         .join("");
-    const table = `<table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
-    return wrapHtml(`<h2>${resultName}</h2>${table}`);
+    if (parsed.type === "json") {
+        const rowsData = toRowsData(parsed);
+        const headers = collectHeaders(rowsData);
+        const table = renderTable(headers, rowsData);
+        return wrapHtml(`<h2>${resultName}</h2>${metadataHtml}${table}`);
+    }
+    const headers = parsed.data.headers;
+    const rowsData = parsed.data.rows.map((row) => {
+        const record = {};
+        headers.forEach((header, index) => {
+            record[header] = row[index] ?? "";
+        });
+        return record;
+    });
+    const table = renderTable(headers, rowsData);
+    return wrapHtml(`<h2>${resultName}</h2>${metadataHtml}${table}`);
+}
+function rowsToCsv(rows) {
+    if (rows.length === 0) {
+        return "";
+    }
+    const headers = Object.keys(rows[0]);
+    const lines = [
+        headers.map((header) => escapeCsv(header)).join(","),
+        ...rows.map((row) => headers.map((header) => escapeCsv(String(row[header] ?? ""))).join(","))
+    ];
+    return lines.join("\n");
+}
+function escapeCsv(value) {
+    if (/[",\n\r]/.test(value)) {
+        return `"${value.replace(/"/g, "\"\"")}"`;
+    }
+    return value;
+}
+function extractTableName(queryText) {
+    const match = /\bfrom\s+([a-zA-Z0-9_."`]+)/i.exec(queryText);
+    if (!match) {
+        return null;
+    }
+    return match[1].replace(/^["`]|["`]$/g, "");
+}
+function collectHeaders(rows) {
+    const headers = new Set();
+    for (const row of rows) {
+        Object.keys(row).forEach((key) => headers.add(key));
+    }
+    return Array.from(headers);
+}
+function renderTable(headers, rows) {
+    if (headers.length === 0) {
+        return "<p>No rows returned.</p>";
+    }
+    const headerHtml = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
+    const rowsHtml = rows
+        .map((row) => {
+        const cells = headers.map((header) => `<td>${escapeHtml(row[header] ?? "")}</td>`).join("");
+        return `<tr>${cells}</tr>`;
+    })
+        .join("");
+    return `<table><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
 }
 function wrapHtml(body) {
     return `<!doctype html>
@@ -150,7 +207,7 @@ function wrapHtml(body) {
     table { border-collapse: collapse; width: 100%; }
     td, th { border: 1px solid #ccc; padding: 6px; }
     th { background: #f5f5f5; text-align: left; }
-    pre { background: #f8f8f8; padding: 12px; }
+    pre { background: #f8f8f8; padding: 12px; white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -171,8 +228,4 @@ async function screenshotFile(htmlPath, screenshotPath) {
     finally {
         await browser.close();
     }
-}
-async function hashFile(filePath) {
-    const buffer = await fs_1.promises.readFile(filePath);
-    return (0, crypto_1.createHash)("sha256").update(buffer).digest("hex");
 }

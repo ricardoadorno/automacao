@@ -22,7 +22,7 @@ npm test
 
 Cobertura principal:
 - P0: browser basico + falha controlada
-- P1: SQL evidence (hashes, HTML, expectRows)
+- P1: SQL evidence (HTML, metadados simples, expectRows)
 - P2: contexto, exports, ordem/encadeamento
 - P3: validacao OpenAPI
 - P4: retries CloudWatch
@@ -82,7 +82,7 @@ Para cada run:
 - `runs/<runId>/steps/<nn_stepId>/screenshot.png`
 
 SQL evidence adiciona:
-- `query.sql`, `result.csv/json`, `evidence.html`, `hashes.json`
+- `query.sql`, `result.csv`, `evidence.html`
 
 ## 8) Problemas comuns
 
@@ -107,3 +107,30 @@ Rodar:
 ```
 npm start -- --plan examples/sqlite/plan.json --out runs
 ```
+
+## 10) JSONPlaceholder -> SQLite -> Search
+
+Fluxo:
+- GET no JSONPlaceholder
+- SELECT no SQLite validando o titulo
+- busca em site publico usando o output do SQLite
+
+Rodar:
+```
+npm start -- --plan examples/jsonplaceholder-sqlite/plan.json --out runs
+```
+
+## 11) Extensao do app (novo padrao)
+
+O projeto agora segue separacao por dominios:
+- `src/core/`: orquestracao e tipos compartilhados
+- `src/domains/browser/`: Playwright, behaviors e steps baseados em browser
+- `src/domains/api/`: Swagger/OpenAPI
+- `src/domains/sql/`: SQL evidence
+
+Para estender:
+1) Crie o executor no dominio certo.
+2) Registre o tipo/config em `src/core/types.ts`.
+3) Encadeie no `src/core/runner.ts`.
+4) Adicione testes `tests/pX-*.spec.ts`.
+5) Documente o fluxo no `README.md`/`HOWTO.md`.

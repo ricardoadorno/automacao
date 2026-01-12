@@ -1,4 +1,0 @@
-{
-  "message": "page.waitForSelector: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.opblock') to be visible\u001b[22m\n",
-  "stack": "page.waitForSelector: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.opblock') to be visible\u001b[22m\n\n    at runAction (C:\\Dev\\automacao\\dist\\actions.js:21:24)\n    at runActions (C:\\Dev\\automacao\\dist\\actions.js:6:15)\n    at async executeSwaggerStep (C:\\Dev\\automacao\\dist\\swagger.js:32:9)\n    at async executePlan (C:\\Dev\\automacao\\dist\\runner.js:64:39)\n    at async main (C:\\Dev\\automacao\\dist\\index.js:21:5)"
-}

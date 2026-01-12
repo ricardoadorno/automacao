@@ -1,7 +1,7 @@
 /// <reference types="vitest" />
 import { describe, expect, it, vi } from "vitest";
-import { executeSwaggerStep } from "../src/swagger";
-import { PlanStep } from "../src/types";
+import { executeSwaggerStep } from "../src/domains/api/swagger";
+import { PlanStep } from "../src/core/types";
 
 vi.mock("playwright", () => {
   return {

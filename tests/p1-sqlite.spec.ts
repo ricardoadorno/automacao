@@ -4,8 +4,8 @@ import os from "os";
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
-import { executeSqlEvidenceStep } from "../src/sql";
-import { PlanStep } from "../src/types";
+import { executeSqlEvidenceStep } from "../src/domains/sql/sql";
+import { PlanStep } from "../src/core/types";
 
 vi.mock("playwright", () => {
   return {
@@ -53,8 +53,7 @@ describe("P1 SQLite adapter", () => {
 
     await fs.access(path.join(stepDir, "evidence.html"));
     await fs.access(path.join(stepDir, "screenshot.png"));
-    await fs.access(path.join(stepDir, "hashes.json"));
-    await fs.access(path.join(stepDir, "result.json"));
+    await fs.access(path.join(stepDir, "result.csv"));
     expect(result.rows).toBe(1);
     expect(result.rowsData[0].id).toBe("1");
   });

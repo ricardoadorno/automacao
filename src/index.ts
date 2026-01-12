@@ -1,5 +1,5 @@
-import { loadPlan } from "./plan";
-import { executePlan } from "./runner";
+import { loadPlan } from "./core/plan";
+import { executePlan } from "./core/runner";
 
 function readArg(flag: string): string | undefined {
   const idx = process.argv.indexOf(flag);

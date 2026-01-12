@@ -3,8 +3,8 @@ import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
-import { executeSqlEvidenceStep } from "../src/sql";
-import { PlanStep } from "../src/types";
+import { executeSqlEvidenceStep } from "../src/domains/sql/sql";
+import { PlanStep } from "../src/core/types";
 
 vi.mock("playwright", () => {
   return {
@@ -25,7 +25,7 @@ vi.mock("playwright", () => {
 });
 
 describe("P1 SQL evidence", () => {
-  it("generates evidence html, hashes and screenshot", async () => {
+  it("generates evidence html and screenshot", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "automacao-"));
     const stepDir = path.join(tempRoot, "step");
     await fs.mkdir(stepDir, { recursive: true });
@@ -50,7 +50,6 @@ describe("P1 SQL evidence", () => {
 
     await fs.access(path.join(stepDir, "evidence.html"));
     await fs.access(path.join(stepDir, "screenshot.png"));
-    await fs.access(path.join(stepDir, "hashes.json"));
     expect(result.rows).toBe(1);
   });
 

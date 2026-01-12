@@ -82,7 +82,6 @@ async function executePlan(plan, outDir) {
                 const sqlResult = await (0, sql_1.executeSqlEvidenceStep)(resolvedStep, stepDir);
                 status = "OK";
                 outputs.screenshot = path_1.default.basename(sqlResult.screenshotPath);
-                outputs.hashes = path_1.default.basename(sqlResult.hashesPath);
                 outputs.query = sqlResult.queryFile;
                 outputs.result = sqlResult.resultFile;
                 outputs.evidence = sqlResult.evidenceFile;
@@ -281,9 +280,6 @@ function describeOutputs(outputs) {
     if (typeof outputs.screenshot === "string") {
         parts.push(`screenshot=${outputs.screenshot}`);
     }
-    if (typeof outputs.hashes === "string") {
-        parts.push(`hashes=${outputs.hashes}`);
-    }
     return parts.length > 0 ? ` [${parts.join(" ")}]` : "";
 }
 function renderArtifacts(outputs) {
@@ -296,7 +292,6 @@ function renderArtifacts(outputs) {
     addArtifactLink(links, stepDir, outputs.query, "query");
     addArtifactLink(links, stepDir, outputs.result, "result");
     addArtifactLink(links, stepDir, outputs.evidence, "evidence");
-    addArtifactLink(links, stepDir, outputs.hashes, "hashes");
     return links.length > 0 ? links.join("") : "-";
 }
 function addArtifactLink(links, stepDir, filename, label) {

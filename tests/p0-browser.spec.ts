@@ -3,10 +3,10 @@ import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
-import { executePlan } from "../src/runner";
-import { Plan } from "../src/types";
+import { executePlan } from "../src/core/runner";
+import { Plan } from "../src/core/types";
 
-vi.mock("../src/browser", () => {
+vi.mock("../src/domains/browser/browser", () => {
   return {
     executeBrowserStep: async (_actions: unknown, stepDir: string) => {
       const screenshotPath = path.join(stepDir, "screenshot.png");
