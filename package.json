@@ -1,0 +1,22 @@
+{
+  "name": "automacao",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Executor de evidencias baseado em plano declarativo",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "scripts": {
+    "start": "tsc -p tsconfig.json && node dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "playwright": "^1.42.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.12.7",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

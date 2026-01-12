@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "feature": "demo-jsonplaceholder",
+    "ticket": "DEMO-REAL-2",
+    "env": "local"
+  },
+  "behaviorsPath": "examples/jsonplaceholder/behaviors.json",
+  "openapiPath": "examples/jsonplaceholder/openapi.json",
+  "steps": [
+    {
+      "id": "sql",
+      "type": "sqlEvidence",
+      "config": {
+        "sql": {
+          "queryPath": "examples/jsonplaceholder/sql/query.sql",
+          "resultPath": "examples/jsonplaceholder/sql/result.csv",
+          "expectRows": 1
+        }
+      },
+      "exports": {
+        "pedidoId": {
+          "source": "sql",
+          "column": "id"
+        }
+      }
+    },
+    {
+      "id": "browser",
+      "type": "browser",
+      "behaviorId": "public-home"
+    },
+    {
+      "id": "swagger",
+      "type": "swagger",
+      "behaviorId": "swagger-jsonplaceholder",
+      "config": {
+        "operationId": "getTodoById",
+        "responseSelector": "body"
+      }
+    },
+    {
+      "id": "cloudwatch",
+      "type": "cloudwatch",
+      "behaviorId": "cloudwatch-standin",
+      "config": {
+        "retries": 1,
+        "retryDelayMs": 500
+      }
+    }
+  ]
+}

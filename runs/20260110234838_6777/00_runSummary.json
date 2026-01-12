@@ -1,0 +1,109 @@
+{
+  "runId": "20260110234838_6777",
+  "startedAt": "2026-01-10T23:48:38.171Z",
+  "finishedAt": "2026-01-10T23:48:44.282Z",
+  "feature": "demo-jsonplaceholder",
+  "ticket": "DEMO-REAL-2",
+  "env": "local",
+  "steps": [
+    {
+      "id": "sql",
+      "type": "sqlEvidence",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:48:38.172Z",
+      "finishedAt": "2026-01-10T23:48:38.384Z",
+      "inputs": {
+        "id": "sql",
+        "type": "sqlEvidence",
+        "config": {
+          "sql": {
+            "queryPath": "examples/jsonplaceholder/sql/query.sql",
+            "resultPath": "examples/jsonplaceholder/sql/result.csv",
+            "expectRows": 1
+          }
+        },
+        "exports": {
+          "pedidoId": {
+            "source": "sql",
+            "column": "id"
+          }
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/01_sql",
+        "screenshot": "screenshot.png",
+        "hashes": "hashes.json",
+        "query": "query.sql",
+        "result": "result.csv",
+        "evidence": "evidence.html",
+        "rows": 1
+      }
+    },
+    {
+      "id": "browser",
+      "type": "browser",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:48:38.385Z",
+      "finishedAt": "2026-01-10T23:48:43.039Z",
+      "inputs": {
+        "id": "browser",
+        "type": "browser",
+        "behaviorId": "public-home"
+      },
+      "outputs": {
+        "stepDir": "steps/02_browser",
+        "screenshot": "screenshot.png"
+      }
+    },
+    {
+      "id": "swagger",
+      "type": "swagger",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:48:43.039Z",
+      "finishedAt": "2026-01-10T23:48:43.525Z",
+      "inputs": {
+        "id": "swagger",
+        "type": "swagger",
+        "behaviorId": "swagger-jsonplaceholder",
+        "config": {
+          "operationId": "getTodoById",
+          "responseSelector": "body"
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/03_swagger",
+        "screenshot": "screenshot.png",
+        "responseText": "{\n  \"userId\": 1,\n  \"id\": 1,\n  \"title\": \"delectus aut autem\",\n  \"completed\": false\n}"
+      }
+    },
+    {
+      "id": "cloudwatch",
+      "type": "cloudwatch",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:48:43.526Z",
+      "finishedAt": "2026-01-10T23:48:44.281Z",
+      "inputs": {
+        "id": "cloudwatch",
+        "type": "cloudwatch",
+        "behaviorId": "cloudwatch-standin",
+        "config": {
+          "retries": 1,
+          "retryDelayMs": 500
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/04_cloudwatch",
+        "screenshot": "screenshot.png",
+        "attempts": 1
+      }
+    }
+  ],
+  "context": {
+    "feature": "demo-jsonplaceholder",
+    "ticket": "DEMO-REAL-2",
+    "env": "local",
+    "runId": "20260110234838_6777",
+    "startedAt": "2026-01-10T23:48:38.171Z",
+    "pedidoId": "789"
+  }
+}

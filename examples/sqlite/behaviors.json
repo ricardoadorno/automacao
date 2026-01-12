@@ -1,0 +1,28 @@
+{
+  "behaviors": {
+    "swagger-jsonplaceholder": {
+      "actions": [
+        {
+          "type": "goto",
+          "url": "https://jsonplaceholder.typicode.com/todos/1"
+        },
+        {
+          "type": "waitForSelector",
+          "selector": "body"
+        }
+      ]
+    },
+    "cloudwatch-date-filter": {
+      "actions": [
+        {
+          "type": "goto",
+          "url": "https://httpbin.org/anything?date={startedAt}"
+        },
+        {
+          "type": "waitForSelector",
+          "selector": "pre"
+        }
+      ]
+    }
+  }
+}

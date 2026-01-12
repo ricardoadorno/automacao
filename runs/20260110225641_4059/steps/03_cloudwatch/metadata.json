@@ -1,0 +1,24 @@
+{
+  "id": "cloudwatch",
+  "type": "cloudwatch",
+  "status": "OK",
+  "startedAt": "2026-01-10T22:56:42.122Z",
+  "finishedAt": "2026-01-10T22:56:42.782Z",
+  "inputs": {
+    "id": "cloudwatch",
+    "type": "cloudwatch",
+    "behaviorId": "cloudwatch-date-filter",
+    "requires": [
+      "startedAt"
+    ],
+    "config": {
+      "retries": 1,
+      "retryDelayMs": 500
+    }
+  },
+  "outputs": {
+    "stepDir": "steps/03_cloudwatch",
+    "screenshot": "screenshot.png",
+    "attempts": 1
+  }
+}

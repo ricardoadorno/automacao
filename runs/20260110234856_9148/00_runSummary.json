@@ -1,0 +1,94 @@
+{
+  "runId": "20260110234856_9148",
+  "startedAt": "2026-01-10T23:48:56.990Z",
+  "finishedAt": "2026-01-10T23:49:03.786Z",
+  "feature": "order-sql-post-cloudwatch",
+  "ticket": "ORDER-1",
+  "env": "local",
+  "steps": [
+    {
+      "id": "sql",
+      "type": "sqlEvidence",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:48:56.993Z",
+      "finishedAt": "2026-01-10T23:48:57.293Z",
+      "inputs": {
+        "id": "sql",
+        "type": "sqlEvidence",
+        "config": {
+          "sql": {
+            "queryPath": "examples/order/sql/query.sql",
+            "resultPath": "examples/order/sql/result.csv",
+            "expectRows": 1
+          }
+        },
+        "exports": {
+          "pedidoId": {
+            "source": "sql",
+            "column": "id"
+          }
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/01_sql",
+        "screenshot": "screenshot.png",
+        "hashes": "hashes.json",
+        "query": "query.sql",
+        "result": "result.csv",
+        "evidence": "evidence.html",
+        "rows": 1
+      }
+    },
+    {
+      "id": "swagger-post",
+      "type": "swagger",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:48:57.294Z",
+      "finishedAt": "2026-01-10T23:49:03.231Z",
+      "inputs": {
+        "id": "swagger-post",
+        "type": "swagger",
+        "behaviorId": "swagger-post",
+        "config": {
+          "operationId": "addPet"
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/02_swagger-post",
+        "screenshot": "screenshot.png"
+      }
+    },
+    {
+      "id": "cloudwatch",
+      "type": "cloudwatch",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:49:03.231Z",
+      "finishedAt": "2026-01-10T23:49:03.785Z",
+      "inputs": {
+        "id": "cloudwatch",
+        "type": "cloudwatch",
+        "behaviorId": "cloudwatch-filter",
+        "requires": [
+          "pedidoId"
+        ],
+        "config": {
+          "retries": 1,
+          "retryDelayMs": 500
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/03_cloudwatch",
+        "screenshot": "screenshot.png",
+        "attempts": 1
+      }
+    }
+  ],
+  "context": {
+    "feature": "order-sql-post-cloudwatch",
+    "ticket": "ORDER-1",
+    "env": "local",
+    "runId": "20260110234856_9148",
+    "startedAt": "2026-01-10T23:48:56.990Z",
+    "pedidoId": "321"
+  }
+}

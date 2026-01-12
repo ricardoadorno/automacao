@@ -1,0 +1,19 @@
+{
+  "id": "swagger-get",
+  "type": "swagger",
+  "status": "OK",
+  "startedAt": "2026-01-10T23:49:15.053Z",
+  "finishedAt": "2026-01-10T23:49:20.763Z",
+  "inputs": {
+    "id": "swagger-get",
+    "type": "swagger",
+    "behaviorId": "swagger-get",
+    "config": {
+      "operationId": "getPetById"
+    }
+  },
+  "outputs": {
+    "stepDir": "steps/01_swagger-get",
+    "screenshot": "screenshot.png"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "swagger-post",
+  "type": "swagger",
+  "status": "OK",
+  "startedAt": "2026-01-10T23:48:57.294Z",
+  "finishedAt": "2026-01-10T23:49:03.231Z",
+  "inputs": {
+    "id": "swagger-post",
+    "type": "swagger",
+    "behaviorId": "swagger-post",
+    "config": {
+      "operationId": "addPet"
+    }
+  },
+  "outputs": {
+    "stepDir": "steps/02_swagger-post",
+    "screenshot": "screenshot.png"
+  }
+}

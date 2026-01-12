@@ -1,0 +1,107 @@
+{
+  "runId": "20260110231824_3342",
+  "startedAt": "2026-01-10T23:18:24.191Z",
+  "finishedAt": "2026-01-10T23:18:31.901Z",
+  "feature": "demo-real",
+  "ticket": "DEMO-REAL-1",
+  "env": "local",
+  "steps": [
+    {
+      "id": "sql",
+      "type": "sqlEvidence",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:18:24.192Z",
+      "finishedAt": "2026-01-10T23:18:24.413Z",
+      "inputs": {
+        "id": "sql",
+        "type": "sqlEvidence",
+        "config": {
+          "sql": {
+            "queryPath": "examples/real/sql/query.sql",
+            "resultPath": "examples/real/sql/result.csv",
+            "expectRows": 1
+          }
+        },
+        "exports": {
+          "pedidoId": {
+            "source": "sql",
+            "column": "id"
+          }
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/01_sql",
+        "screenshot": "screenshot.png",
+        "hashes": "hashes.json",
+        "query": "query.sql",
+        "result": "result.csv",
+        "evidence": "evidence.html",
+        "rows": 1
+      }
+    },
+    {
+      "id": "browser",
+      "type": "browser",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:18:24.415Z",
+      "finishedAt": "2026-01-10T23:18:28.236Z",
+      "inputs": {
+        "id": "browser",
+        "type": "browser",
+        "behaviorId": "public-home"
+      },
+      "outputs": {
+        "stepDir": "steps/02_browser",
+        "screenshot": "screenshot.png"
+      }
+    },
+    {
+      "id": "swagger",
+      "type": "swagger",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:18:28.237Z",
+      "finishedAt": "2026-01-10T23:18:31.278Z",
+      "inputs": {
+        "id": "swagger",
+        "type": "swagger",
+        "behaviorId": "swagger-petstore",
+        "config": {
+          "operationId": "getPetById"
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/03_swagger",
+        "screenshot": "screenshot.png"
+      }
+    },
+    {
+      "id": "cloudwatch",
+      "type": "cloudwatch",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:18:31.278Z",
+      "finishedAt": "2026-01-10T23:18:31.901Z",
+      "inputs": {
+        "id": "cloudwatch",
+        "type": "cloudwatch",
+        "behaviorId": "cloudwatch-standin",
+        "config": {
+          "retries": 1,
+          "retryDelayMs": 500
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/04_cloudwatch",
+        "screenshot": "screenshot.png",
+        "attempts": 1
+      }
+    }
+  ],
+  "context": {
+    "feature": "demo-real",
+    "ticket": "DEMO-REAL-1",
+    "env": "local",
+    "runId": "20260110231824_3342",
+    "startedAt": "2026-01-10T23:18:24.191Z",
+    "pedidoId": "456"
+  }
+}

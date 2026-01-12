@@ -1,0 +1,60 @@
+{
+  "behaviors": {
+    "swagger-get": {
+      "actions": [
+        {
+          "type": "goto",
+          "url": "https://petstore.swagger.io/"
+        },
+        {
+          "type": "waitForSelector",
+          "selector": ".swagger-ui"
+        },
+        {
+          "type": "waitForTimeout",
+          "ms": 4000
+        }
+      ]
+    },
+    "swagger-post": {
+      "actions": [
+        {
+          "type": "goto",
+          "url": "https://petstore.swagger.io/"
+        },
+        {
+          "type": "waitForSelector",
+          "selector": ".swagger-ui"
+        },
+        {
+          "type": "waitForTimeout",
+          "ms": 4000
+        }
+      ]
+    },
+    "cloudwatch-filter": {
+      "actions": [
+        {
+          "type": "goto",
+          "url": "https://httpbin.org/anything?pedidoId={pedidoId}"
+        },
+        {
+          "type": "waitForSelector",
+          "selector": "pre"
+        }
+      ]
+    },
+    "cloudwatch-filter-todo": {
+      "actions": [
+        {
+          "type": "goto",
+          "url": "https://httpbin.org/anything?petId=10"
+        },
+        {
+          "type": "waitForSelector",
+          "selector": "pre"
+        }
+      ]
+    }
+  }
+}

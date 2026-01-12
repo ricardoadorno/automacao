@@ -1,0 +1,57 @@
+{
+  "runId": "20260110234915_2355",
+  "startedAt": "2026-01-10T23:49:15.051Z",
+  "finishedAt": "2026-01-10T23:49:21.414Z",
+  "feature": "order-swagger-get-cloudwatch",
+  "ticket": "ORDER-2",
+  "env": "local",
+  "steps": [
+    {
+      "id": "swagger-get",
+      "type": "swagger",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:49:15.053Z",
+      "finishedAt": "2026-01-10T23:49:20.763Z",
+      "inputs": {
+        "id": "swagger-get",
+        "type": "swagger",
+        "behaviorId": "swagger-get",
+        "config": {
+          "operationId": "getPetById"
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/01_swagger-get",
+        "screenshot": "screenshot.png"
+      }
+    },
+    {
+      "id": "cloudwatch",
+      "type": "cloudwatch",
+      "status": "OK",
+      "startedAt": "2026-01-10T23:49:20.764Z",
+      "finishedAt": "2026-01-10T23:49:21.413Z",
+      "inputs": {
+        "id": "cloudwatch",
+        "type": "cloudwatch",
+        "behaviorId": "cloudwatch-filter-todo",
+        "config": {
+          "retries": 1,
+          "retryDelayMs": 500
+        }
+      },
+      "outputs": {
+        "stepDir": "steps/02_cloudwatch",
+        "screenshot": "screenshot.png",
+        "attempts": 1
+      }
+    }
+  ],
+  "context": {
+    "feature": "order-swagger-get-cloudwatch",
+    "ticket": "ORDER-2",
+    "env": "local",
+    "runId": "20260110234915_2355",
+    "startedAt": "2026-01-10T23:49:15.051Z"
+  }
+}
