@@ -114,19 +114,19 @@ function buildCliEvidenceHtml(
   const cwd = cli?.cwd ?? "-";
   const timeoutMs = cli?.timeoutMs !== undefined ? String(cli.timeoutMs) : "-";
 
-  const metaRows = [
-    ["Step", step.id ?? step.type],
-    ["Command", command],
-    ["Args", args],
-    ["Cwd", cwd],
-    ["TimeoutMs", timeoutMs],
-    ["Exit code", String(data.exitCode)],
-    ["DurationMs", String(data.durationMs)]
-  ];
+  const metaLine = [
+    `Step: ${escapeHtml(step.id ?? step.type)}`,
+    `Command: ${escapeHtml(command)}`,
+    `Args: ${escapeHtml(args)}`,
+    `Cwd: ${escapeHtml(cwd)}`,
+    `TimeoutMs: ${escapeHtml(timeoutMs)}`,
+    `Exit: ${escapeHtml(String(data.exitCode))}`,
+    `DurationMs: ${escapeHtml(String(data.durationMs))}`
+  ].join(" · ");
 
-  const metaTable = `<table><tbody>${metaRows
-    .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`)
-    .join("")}</tbody></table>`;
+  const descriptionBlock = step.description
+    ? `<div class="description">${escapeHtml(step.description)}</div>`
+    : "";
 
   const commandRows = data.commands
     .map((entry) => {
@@ -155,19 +155,26 @@ function buildCliEvidenceHtml(
 <head>
   <meta charset="utf-8" />
   <style>
-    body { font-family: Arial, sans-serif; padding: 24px; }
-    table { border-collapse: collapse; width: 100%; margin-bottom: 16px; }
-    td, th { border: 1px solid #ccc; padding: 6px; text-align: left; vertical-align: top; }
-    th { background: #f5f5f5; width: 160px; }
-    pre { background: #f8f8f8; padding: 12px; white-space: pre-wrap; }
+    body { font-family: "Trebuchet MS", "Lucida Sans Unicode", "Lucida Grande", sans-serif; padding: 10px; color: #1f2328; background: #f5f2ec; }
+    .card { max-width: 980px; margin: 0 auto; background: #fff; border-radius: 10px; box-shadow: 0 10px 28px rgba(25, 28, 32, 0.12); overflow: hidden; border: 1px solid #e2ddd3; padding: 10px; }
+    h2, h3 { margin: 8px 0 4px; font-size: 12px; font-weight: 600; }
+    .summary { font-size: 11px; color: #3b3f44; background: #f7f5ef; border: 1px solid #e0dbd1; border-radius: 8px; padding: 6px 8px; margin-bottom: 8px; }
+    .description { padding: 6px 8px; border-radius: 8px; background: #fff7db; border: 1px solid #f0e0a8; font-size: 11px; margin-bottom: 8px; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 8px; font-size: 10px; }
+    td, th { border: 1px solid #d6d0c6; padding: 3px 5px; text-align: left; vertical-align: top; }
+    th { background: #f3f1ea; width: 120px; }
+    pre { background: #f7f5ef; padding: 6px; white-space: pre-wrap; font-size: 10px; }
   </style>
 </head>
 <body>
-  <h2>CLI Evidence</h2>
-  ${metaTable}
-  ${commandTable}
-  ${stdoutHtml}
-  ${stderrHtml}
+  <div class="card">
+    <h2>CLI Evidence</h2>
+    <div class="summary">${metaLine}</div>
+    ${descriptionBlock}
+    ${commandTable}
+    ${stdoutHtml}
+    ${stderrHtml}
+  </div>
 </body>
 </html>`;
 }

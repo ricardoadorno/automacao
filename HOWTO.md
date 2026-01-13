@@ -115,6 +115,12 @@ npm run dashboard
 
 Abra `http://localhost:3000` para listar planos e executar runs por clique.
 
+Se quiser apenas visualizar runs existentes:
+
+```
+npm run runs:view
+```
+
 ## 8) Onde ver os artefatos
 
 Para cada run:

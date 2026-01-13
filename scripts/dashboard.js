@@ -49,7 +49,7 @@ async function findPlans(dir, basePath = "") {
         const plan = JSON.parse(content);
         
         plans.push({
-          path: relativePath.replace(/\\/g, "/"),
+          path: path.join("examples", relativePath).replace(/\\/g, "/"),
           fullPath: fullPath,
           feature: plan.metadata?.feature || "Unnamed",
           ticket: plan.metadata?.ticket || "",
@@ -84,8 +84,10 @@ async function handleRunPlan(req, res) {
         return;
       }
       
+      const resolvedPlanPath = resolvePlanPath(planPath);
       const executionId = Date.now().toString();
-      const command = `npm start -- --plan ${planPath} --out runs`;
+      const safePlanPath = resolvedPlanPath.replace(/"/g, '\\"');
+      const command = `npm start -- --plan "${safePlanPath}" --out runs`;
       
       runningExecutions.set(executionId, {
         planPath,
@@ -99,28 +101,52 @@ async function handleRunPlan(req, res) {
       
       child.stdout.on("data", (data) => {
         const execution = runningExecutions.get(executionId);
-        if (execution) {
-          execution.output.push(data.toString());
+        if (!execution) {
+          return;
+        }
+        const text = data.toString();
+        execution.output.push(text);
+        if (text.includes("Run ") && text.includes(" finished:")) {
+          execution.status = "completed";
+          execution.finishedAt = new Date().toISOString();
         }
       });
       
       child.stderr.on("data", (data) => {
         const execution = runningExecutions.get(executionId);
-        if (execution) {
-          execution.output.push(`ERROR: ${data.toString()}`);
+        if (!execution) {
+          return;
         }
+        execution.output.push(`ERROR: ${data.toString()}`);
       });
       
-      child.on("exit", (code) => {
+      const finalizeExecution = (status, details = {}) => {
         const execution = runningExecutions.get(executionId);
-        if (execution) {
-          execution.status = code === 0 ? "completed" : "failed";
-          execution.finishedAt = new Date().toISOString();
-          execution.exitCode = code;
+        if (!execution || execution.status !== "running") {
+          return;
         }
-        
-        // Regenerate index after execution
+        execution.status = status;
+        execution.finishedAt = new Date().toISOString();
+        Object.assign(execution, details);
+      };
+
+      child.on("exit", (code, signal) => {
+        finalizeExecution(code === 0 ? "completed" : "failed", {
+          exitCode: code,
+          signal
+        });
         exec("npm run index", { cwd: process.cwd() });
+      });
+
+      child.on("close", (code, signal) => {
+        finalizeExecution(code === 0 ? "completed" : "failed", {
+          exitCode: code,
+          signal
+        });
+      });
+
+      child.on("error", (error) => {
+        finalizeExecution("failed", { error: error.message });
       });
       
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -135,6 +161,20 @@ async function handleRunPlan(req, res) {
       res.end(JSON.stringify({ error: error.message }));
     }
   });
+}
+
+function resolvePlanPath(planPath) {
+  const plansDir = path.join(process.cwd(), "examples");
+  const normalized = planPath.replace(/\\/g, "/");
+  const relative =
+    normalized.startsWith("examples/") ? normalized.slice("examples/".length) : normalized;
+  const resolved = path.resolve(plansDir, relative);
+
+  if (!resolved.startsWith(plansDir + path.sep) && resolved !== plansDir) {
+    throw new Error("planPath must stay within examples/");
+  }
+
+  return resolved;
 }
 
 async function handleGetStatus(req, res) {
@@ -162,25 +202,58 @@ async function handleGetStatus(req, res) {
 async function handleGetRuns(req, res) {
   try {
     const runsDir = path.join(process.cwd(), "runs");
-    const indexPath = path.join(runsDir, "index.html");
-    
-    // Check if index.html exists
-    if (!fs.existsSync(indexPath)) {
+    if (!fs.existsSync(runsDir)) {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ runs: [] }));
+      res.end(JSON.stringify({ runs: [], page: 1, pageSize: 5, total: 0 }));
       return;
     }
-    
-    // Read directory to get run folders
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const page = Math.max(1, Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1);
+    const pageSize = Math.max(
+      1,
+      Math.min(20, Number.parseInt(url.searchParams.get("pageSize") ?? "5", 10) || 5)
+    );
     const entries = await fs.promises.readdir(runsDir, { withFileTypes: true });
-    const runs = entries
+    const runIds = entries
       .filter(e => e.isDirectory())
-      .map(e => ({ runId: e.name }))
-      .sort((a, b) => b.runId.localeCompare(a.runId))
-      .slice(0, 20);
+      .map(e => e.name)
+      .sort((a, b) => b.localeCompare(a));
+    const total = runIds.length;
+    const start = (page - 1) * pageSize;
+    const pageIds = runIds.slice(start, start + pageSize);
+    const runs = await Promise.all(
+      pageIds.map(async (runId) => {
+        const summaryPath = path.join(runsDir, runId, "00_runSummary.json");
+        try {
+          const summaryRaw = await fs.promises.readFile(summaryPath, "utf-8");
+          const summary = JSON.parse(summaryRaw);
+          const counts = { OK: 0, FAIL: 0, SKIPPED: 0 };
+          for (const step of summary.steps ?? []) {
+            if (step.status === "OK") counts.OK += 1;
+            if (step.status === "FAIL") counts.FAIL += 1;
+            if (step.status === "SKIPPED") counts.SKIPPED += 1;
+          }
+          const status =
+            counts.FAIL > 0 ? "FAIL" : counts.SKIPPED > 0 ? "SKIPPED" : "OK";
+          return {
+            runId,
+            feature: summary.feature ?? "",
+            ticket: summary.ticket ?? "",
+            env: summary.env ?? "",
+            startedAt: summary.startedAt ?? "",
+            finishedAt: summary.finishedAt ?? "",
+            status,
+            counts,
+            steps: summary.steps?.length ?? 0
+          };
+        } catch (error) {
+          return { runId };
+        }
+      })
+    );
     
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ runs }));
+    res.end(JSON.stringify({ runs, page, pageSize, total }));
   } catch (error) {
     res.writeHead(500, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: error.message }));
@@ -201,11 +274,12 @@ const server = http.createServer((req, res) => {
   }
   
   // API routes
-  for (const [route, handler] of Object.entries(routes)) {
-    if (req.url.startsWith(route)) {
-      handler(req, res);
-      return;
-    }
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const pathname = url.pathname;
+  const handler = routes[pathname];
+  if (handler) {
+    handler(req, res);
+    return;
   }
   
   // Static files

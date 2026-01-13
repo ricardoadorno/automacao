@@ -239,6 +239,15 @@ npm run dashboard
 
 Abra `http://localhost:3000` e escolha um plano em `examples/`.
 
+Comandos auxiliares:
+
+```
+npm run runs:view
+npm run runs:serve
+```
+
+`runs:view` gera o indice de runs e sobe o servidor estatico. `runs:serve` apenas serve arquivos existentes.
+
 ## 9) Arquitetura por dominios (novo padrao)
 
 O codigo agora e organizado por dominios, para facilitar debug e extensao:

@@ -5,250 +5,427 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Test Automation Dashboard</title>
   <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f1ea;
+      --bg-soft: #f9f7f2;
+      --panel: #ffffff;
+      --ink: #1f2328;
+      --muted: #6a6f76;
+      --border: #d7d2c6;
+      --accent: #1c6b4f;
+      --accent-ink: #f5f3ed;
+      --accent-soft: #e2efe7;
+      --warn: #f3d08b;
+      --danger: #efb3b3;
+      --shadow: 0 10px 30px rgba(22, 24, 27, 0.08);
+    }
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
-    
+
     body {
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
+      font-family: "Trebuchet MS", "Lucida Sans Unicode", "Lucida Grande", sans-serif;
+      background:
+        radial-gradient(circle at 10% 0%, #fff7e2 0%, transparent 50%),
+        radial-gradient(circle at 90% 10%, #e8f0ea 0%, transparent 55%),
+        linear-gradient(180deg, var(--bg) 0%, var(--bg-soft) 55%, #f2efe9 100%);
+      color: var(--ink);
       font-size: 14px;
+      min-height: 100vh;
     }
-    
+
     .header {
-      background: #333;
-      color: white;
-      padding: 16px 24px;
-      border-bottom: 1px solid #ddd;
+      padding: 22px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+      background: linear-gradient(120deg, #1f2328 0%, #314153 55%, #1c2a22 100%);
+      color: #f8f7f2;
     }
-    
+
     .header h1 {
-      font-size: 20px;
-      font-weight: normal;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
     }
-    
+
+    .header p {
+      font-size: 12px;
+      color: #d1d4d9;
+      margin-top: 4px;
+    }
+
     .container {
       max-width: 1200px;
       margin: 0 auto;
-      padding: 16px;
+      padding: 20px 18px 28px;
     }
-    
+
     .nav-tabs {
       display: flex;
-      gap: 0;
-      margin-bottom: 16px;
-      background: white;
-      border: 1px solid #ddd;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
     }
-    
+
     .nav-tab {
-      padding: 10px 16px;
-      background: white;
-      border: none;
-      border-right: 1px solid #ddd;
+      padding: 8px 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 999px;
       cursor: pointer;
-      font-size: 13px;
-      color: #666;
+      font-size: 12px;
+      color: var(--muted);
+      transition: all 0.15s ease;
     }
-    
+
     .nav-tab:hover {
-      background: #f9f9f9;
+      border-color: #b5b0a6;
+      color: var(--ink);
     }
-    
+
     .nav-tab.active {
-      background: #333;
-      color: white;
+      background: var(--accent);
+      color: var(--accent-ink);
+      border-color: transparent;
+      box-shadow: var(--shadow);
     }
-    
+
     .tab-content {
       display: none;
     }
-    
+
     .tab-content.active {
       display: block;
     }
-    
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .section-title h2 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .section-title p {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .section-actions {
+      display: flex;
+      gap: 8px;
+    }
+
     .plans-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
     }
-    
+
     .plan-card {
-      background: white;
-      border: 1px solid #ddd;
-      padding: 12px;
-      cursor: pointer;
-    }
-    
-    .plan-card:hover {
-      border-color: #333;
-    }
-    
-    .plan-card .feature {
-      font-size: 14px;
-      font-weight: bold;
-      color: #333;
-      margin-bottom: 6px;
-    }
-    
-    .plan-card .path {
-      font-size: 11px;
-      color: #999;
-      margin-bottom: 8px;
-      font-family: monospace;
-    }
-    
-    .plan-card .meta {
-      font-size: 12px;
-      color: #666;
-      margin-bottom: 8px;
-    }
-    
-    .plan-card .actions {
-      display: flex;
-      gap: 6px;
-      margin-top: 8px;
-    }
-    
-    .btn {
-      padding: 6px 12px;
-      border: 1px solid #ddd;
-      background: white;
-      cursor: pointer;
-      font-size: 12px;
-    }
-    
-    .btn-primary {
-      background: #333;
-      color: white;
-      border-color: #333;
-    }
-    
-    .btn-primary:hover {
-      background: #000;
-    }
-    
-    .btn:disabled {
-      background: #eee;
-      cursor: not-allowed;
-    }
-    
-    .execution-card {
-      background: white;
-      border: 1px solid #ddd;
-      padding: 12px;
-      margin-bottom: 12px;
-    }
-    
-    .execution-header {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 10px;
-      font-size: 13px;
-    }
-    
-    .execution-status {
-      padding: 2px 8px;
-      font-size: 11px;
-      background: #eee;
-      border: 1px solid #ddd;
-    }
-    
-    .status-running { background: #fff3cd; }
-    .status-completed { background: #d4edda; }
-    .status-failed { background: #f8d7da; }
-    
-    .execution-output {
-      background: #f5f5f5;
-      padding: 10px;
-      font-family: monospace;
-      font-size: 11px;
-      max-height: 200px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      border: 1px solid #ddd;
-    }
-    
-    .recent-runs {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 14px;
+      border-radius: 16px;
       display: flex;
       flex-direction: column;
       gap: 8px;
+      box-shadow: 0 8px 24px rgba(28, 34, 40, 0.04);
+      transition: transform 0.15s ease, border 0.15s ease;
     }
-    
-    .run-card {
-      background: white;
-      border: 1px solid #ddd;
-      padding: 12px;
+
+    .plan-card:hover {
+      border-color: #a7a195;
+      transform: translateY(-2px);
+    }
+
+    .plan-card .feature {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .plan-card .path {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: "Lucida Console", Monaco, monospace;
+    }
+
+    .plan-card .meta {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .plan-card .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .plan-card .tags:empty {
+      display: none;
+    }
+
+    .tag {
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      font-size: 11px;
+      color: #1f4f3c;
+    }
+
+    .plan-card .actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .btn {
+      padding: 7px 14px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--ink);
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      border-color: #b5b0a6;
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--accent-ink);
+      border-color: transparent;
+      box-shadow: 0 10px 20px rgba(28, 107, 79, 0.2);
+    }
+
+    .btn-primary:hover {
+      background: #17573f;
+    }
+
+    .btn:disabled {
+      background: #efede7;
+      cursor: not-allowed;
+      color: #8b877d;
+      border-color: #e1ddd3;
+      transform: none;
+    }
+
+    .execution-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 14px;
+      margin-bottom: 12px;
+      border-radius: 14px;
+      box-shadow: 0 8px 20px rgba(28, 34, 40, 0.04);
+    }
+
+    .execution-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 12px;
+      font-size: 13px;
       cursor: pointer;
     }
-    
-    .run-card:hover {
-      border-color: #333;
+
+    .execution-card summary {
+      list-style: none;
     }
-    
+
+    .execution-card summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .execution-title {
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    .execution-status {
+      padding: 3px 10px;
+      font-size: 11px;
+      border-radius: 999px;
+      background: #f0eee8;
+      border: 1px solid var(--border);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .status-running { background: var(--warn); }
+    .status-completed { background: #bfe3c9; }
+    .status-failed { background: var(--danger); }
+
+    .execution-output {
+      background: #f7f5ef;
+      padding: 10px;
+      border-radius: 10px;
+      font-family: "Lucida Console", Monaco, monospace;
+      font-size: 11px;
+      max-height: 220px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      border: 1px solid #e5e0d6;
+      margin-top: 10px;
+    }
+
+    .recent-runs {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .run-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-radius: 14px;
+      box-shadow: 0 8px 20px rgba(28, 34, 40, 0.04);
+      transition: transform 0.15s ease, border 0.15s ease;
+    }
+
+    .run-card:hover {
+      border-color: #a7a195;
+      transform: translateY(-2px);
+    }
+
     .run-info {
       flex: 1;
     }
-    
+
     .run-id {
       font-size: 13px;
-      font-weight: bold;
-      color: #333;
+      font-weight: 600;
+      color: var(--ink);
       margin-bottom: 4px;
+      font-family: "Lucida Console", Monaco, monospace;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
-    
+
     .run-feature {
       font-size: 12px;
-      color: #666;
+      color: var(--muted);
     }
-    
-    .run-stats {
+
+    .run-meta {
+      font-size: 11px;
+      color: #7c8077;
+      margin-top: 4px;
+    }
+
+    .run-status {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      border: 1px solid var(--border);
+      background: #f0eee8;
+    }
+
+    .run-status.status-ok { background: #bfe3c9; }
+    .run-status.status-fail { background: var(--danger); }
+    .run-status.status-skipped { background: #f0e3b4; }
+    .run-status.status-unknown { background: #e6e2d9; }
+
+    .pagination {
       display: flex;
-      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 14px;
+      padding: 10px 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .pagination-info {
       font-size: 12px;
+      color: var(--muted);
     }
-    
-    .stat-badge {
-      padding: 2px 6px;
-      background: #f5f5f5;
-      border: 1px solid #ddd;
-    }
-    
+
     .loading {
       padding: 20px;
-      color: #666;
+      color: var(--muted);
       font-size: 13px;
     }
-    
+
     .empty-state {
-      padding: 40px;
-      background: white;
-      border: 1px solid #ddd;
+      padding: 40px 16px;
+      background: var(--panel);
+      border: 1px dashed #cbc6bb;
+      border-radius: 18px;
       text-align: center;
-      color: #999;
+      color: var(--muted);
       font-size: 13px;
     }
-    
+
     .toast {
       position: fixed;
       bottom: 16px;
       right: 16px;
-      background: white;
+      background: var(--panel);
       padding: 10px 16px;
-      border: 1px solid #ddd;
+      border: 1px solid var(--border);
+      border-radius: 12px;
       display: none;
       font-size: 13px;
+      box-shadow: var(--shadow);
       z-index: 1000;
     }
-    
+
     .toast.show {
       display: block;
+    }
+
+    @media (max-width: 720px) {
+      .header {
+        padding: 20px 16px;
+      }
+
+      .container {
+        padding: 16px 14px 24px;
+      }
+
+      .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .plan-card .actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .execution-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .run-card {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
     }
   </style>
 </head>
@@ -256,6 +433,7 @@
   <div class="header">
     <div class="container">
       <h1>Test Automation Dashboard</h1>
+      <p>Run plans, track executions, and jump to evidence reports.</p>
     </div>
   </div>
   
@@ -268,19 +446,48 @@
     
     <!-- Test Plans Tab -->
     <div class="tab-content active" id="plans-tab">
+      <div class="section-header">
+        <div class="section-title">
+          <h2>Available plans</h2>
+          <p>Pick a plan to execute and watch the run live.</p>
+        </div>
+        <div class="section-actions">
+          <button class="btn" id="plans-refresh">Refresh</button>
+        </div>
+      </div>
       <div class="loading" id="plans-loading">Loading...</div>
       <div class="plans-grid" id="plans-grid"></div>
     </div>
     
     <!-- Running Executions Tab -->
     <div class="tab-content" id="executions-tab">
+      <div class="section-header">
+        <div class="section-title">
+          <h2>Live executions</h2>
+          <p>Real-time output from running plans.</p>
+        </div>
+      </div>
       <div id="executions-list"></div>
     </div>
     
     <!-- Recent Results Tab -->
     <div class="tab-content" id="results-tab">
+      <div class="section-header">
+        <div class="section-title">
+          <h2>Recent runs</h2>
+          <p>Open the latest evidence dashboards.</p>
+        </div>
+        <div class="section-actions">
+          <button class="btn" id="results-refresh">Refresh</button>
+        </div>
+      </div>
       <div class="loading" id="results-loading">Loading...</div>
       <div class="recent-runs" id="results-list"></div>
+      <div class="pagination" id="results-pagination">
+        <button class="btn" id="results-prev">Previous</button>
+        <div class="pagination-info" id="results-page-info">Page 1 of 1</div>
+        <button class="btn" id="results-next">Next</button>
+      </div>
     </div>
   </div>
   
@@ -293,7 +500,10 @@
     const state = {
       plans: [],
       executions: {},
-      runs: []
+      runs: [],
+      runsPage: 1,
+      runsPageSize: 5,
+      runsTotal: 0
     };
     
     // Tab switching
@@ -311,19 +521,30 @@
         
         // Load data for tab
         if (tabName === 'plans') loadPlans();
+        if (tabName === 'executions') renderExecutions();
         if (tabName === 'results') loadResults();
       });
     });
     
     // Load plans
     async function loadPlans() {
+      const loading = document.getElementById('plans-loading');
+      const grid = document.getElementById('plans-grid');
+      loading.style.display = 'block';
+      grid.innerHTML = '';
+
       try {
         const response = await fetch('/api/plans');
         const data = await response.json();
+        if (!response.ok) {
+          throw data;
+        }
         state.plans = data.plans;
         renderPlans();
       } catch (error) {
-        showToast('Failed to load plans');
+        loading.style.display = 'none';
+        grid.innerHTML = '<div class="empty-state">Plans unavailable right now</div>';
+        showToast(error);
       }
     }
     
@@ -340,15 +561,36 @@
       }
       
       grid.innerHTML = state.plans.map(plan => `
-        <div class="plan-card">
+        <div class="plan-card" data-plan-path="${escapeHtml(plan.path)}">
           <div class="feature">${escapeHtml(plan.feature)}</div>
           <div class="path">${escapeHtml(plan.path)}</div>
           <div class="meta">${plan.stepsCount} steps</div>
+          <div class="tags">
+            ${plan.ticket ? `<span class="tag">Ticket: ${escapeHtml(plan.ticket)}</span>` : ''}
+            ${plan.env ? `<span class="tag">Env: ${escapeHtml(plan.env)}</span>` : ''}
+          </div>
           <div class="actions">
-            <button class="btn btn-primary" onclick="runPlan('${plan.path}')">Run</button>
+            <button class="btn btn-primary" data-plan-path="${escapeHtml(plan.path)}">Run</button>
           </div>
         </div>
       `).join('');
+
+      grid.querySelectorAll('.plan-card').forEach(card => {
+        card.addEventListener('click', (event) => {
+          const target = event.target;
+          if (target && target.closest('button')) {
+            return;
+          }
+          runPlan(card.getAttribute('data-plan-path'));
+        });
+      });
+
+      grid.querySelectorAll('.plan-card [data-plan-path]').forEach(button => {
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          runPlan(button.getAttribute('data-plan-path'));
+        });
+      });
     }
     
     // Run plan
@@ -369,7 +611,7 @@
             startedAt: new Date().toISOString()
           };
           
-          showToast(`Execution started: ${planPath}`);
+          showToast({ message: 'Execution started', planPath, response: data });
           
           // Switch to executions tab
           document.querySelector('[data-tab="executions"]').click();
@@ -377,10 +619,10 @@
           // Start monitoring
           monitorExecution(data.executionId);
         } else {
-          showToast(data.error || 'Failed to start execution');
+          showToast(data);
         }
       } catch (error) {
-        showToast('Failed to start execution');
+        showToast(error);
       }
     }
     
@@ -390,6 +632,9 @@
         try {
           const response = await fetch(`/api/status?id=${executionId}`);
           const data = await response.json();
+          if (!response.ok) {
+            throw data;
+          }
           
           state.executions[executionId] = data;
           renderExecutions();
@@ -400,6 +645,13 @@
             loadResults();
           }
         } catch (error) {
+          const execution = state.executions[executionId];
+          if (execution && execution.status === 'running') {
+            execution.status = 'failed';
+            execution.error = error?.error || 'Status check failed';
+          }
+          renderExecutions();
+          showToast(error);
           clearInterval(interval);
         }
       }, 2000);
@@ -408,7 +660,12 @@
     // Render executions
     function renderExecutions() {
       const list = document.getElementById('executions-list');
-      const executions = Object.entries(state.executions);
+      const executions = Object.entries(state.executions)
+        .sort(([, a], [, b]) => {
+          const timeA = a.startedAt ? Date.parse(a.startedAt) : 0;
+          const timeB = b.startedAt ? Date.parse(b.startedAt) : 0;
+          return timeB - timeA;
+        });
       
       if (executions.length === 0) {
         list.innerHTML = '<div class="empty-state">No running executions</div>';
@@ -416,27 +673,36 @@
       }
       
       list.innerHTML = executions.map(([id, exec]) => `
-        <div class="execution-card">
-          <div class="execution-header">
-            <strong>${escapeHtml(exec.planPath)}</strong>
+        <details class="execution-card" ${exec.status === 'running' ? 'open' : ''}>
+          <summary class="execution-header">
+            <span class="execution-title">${escapeHtml(exec.planPath)}</span>
             <span class="execution-status status-${exec.status}">${exec.status}</span>
-          </div>
-          ${exec.output && exec.output.length > 0 ? `
-            <div class="execution-output">${escapeHtml(exec.output.join('').slice(-1000))}</div>
-          ` : ''}
-        </div>
+          </summary>
+          <div class="execution-output">${exec.output && exec.output.length > 0 ? escapeHtml(exec.output.join('').slice(-1000)) : 'No output yet'}</div>
+        </details>
       `).join('');
     }
     
     // Load results
     async function loadResults() {
+      const loading = document.getElementById('results-loading');
+      const list = document.getElementById('results-list');
+      loading.style.display = 'block';
+      list.innerHTML = '';
+
       try {
-        const response = await fetch('/api/runs');
+        const response = await fetch(`/api/runs?page=${state.runsPage}&pageSize=${state.runsPageSize}`);
         const data = await response.json();
+        if (!response.ok) {
+          throw data;
+        }
         state.runs = data.runs;
+        state.runsTotal = data.total ?? data.runs.length;
         renderResults();
       } catch (error) {
-        showToast('Failed to load results');
+        loading.style.display = 'none';
+        list.innerHTML = '<div class="empty-state">Results unavailable right now</div>';
+        showToast(error);
       }
     }
     
@@ -453,14 +719,62 @@
       }
       
       list.innerHTML = state.runs.map(run => {
+        const feature = run.feature ? escapeHtml(run.feature) : 'Unknown feature';
+        const ticket = run.ticket ? `Ticket: ${escapeHtml(run.ticket)}` : 'Ticket: -';
+        const env = run.env ? `Env: ${escapeHtml(run.env)}` : 'Env: -';
+        const counts = run.counts
+          ? `Steps: ${run.steps} · OK ${run.counts.OK} · FAIL ${run.counts.FAIL} · SKIP ${run.counts.SKIPPED}`
+          : 'Summary unavailable';
+        const statusClass = run.status ? `status-${run.status.toLowerCase()}` : 'status-unknown';
+        const statusLabel = run.status ? run.status : 'UNKNOWN';
         return `
-          <div class="run-card" onclick="window.location.href='/runs/${run.runId}/index.html'">
+          <div class="run-card" data-run-id="${escapeHtml(run.runId)}">
             <div class="run-info">
-              <div class="run-id">${escapeHtml(run.runId)}</div>
+              <div class="run-id">
+                ${escapeHtml(run.runId)}
+                <span class="run-status ${statusClass}">${statusLabel}</span>
+              </div>
+              <div class="run-feature">${feature}</div>
+              <div class="run-meta">${ticket} · ${env}</div>
+              <div class="run-meta">${counts}</div>
             </div>
+            <button class="btn" data-run-id="${escapeHtml(run.runId)}">Open</button>
           </div>
         `;
       }).join('');
+
+      list.querySelectorAll('.run-card').forEach(card => {
+        card.addEventListener('click', (event) => {
+          const target = event.target;
+          if (target && target.closest('button')) {
+            return;
+          }
+          const runId = card.getAttribute('data-run-id');
+          window.location.href = `/runs/${runId}/index.html`;
+        });
+      });
+
+      list.querySelectorAll('.run-card [data-run-id]').forEach(button => {
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const runId = button.getAttribute('data-run-id');
+          window.location.href = `/runs/${runId}/index.html`;
+        });
+      });
+
+      updateResultsPagination();
+    }
+
+    function updateResultsPagination() {
+      const pageInfo = document.getElementById('results-page-info');
+      const prevButton = document.getElementById('results-prev');
+      const nextButton = document.getElementById('results-next');
+      const pagination = document.getElementById('results-pagination');
+      const totalPages = Math.max(1, Math.ceil(state.runsTotal / state.runsPageSize));
+      pagination.style.display = state.runsTotal > 0 ? 'flex' : 'none';
+      pageInfo.textContent = `Page ${state.runsPage} of ${totalPages}`;
+      prevButton.disabled = state.runsPage <= 1;
+      nextButton.disabled = state.runsPage >= totalPages;
     }
     
     function escapeHtml(str) {
@@ -473,7 +787,15 @@
       const toast = document.getElementById('toast');
       const msg = document.getElementById('toast-message');
       
-      msg.textContent = message;
+      if (typeof message === 'string') {
+        msg.textContent = message;
+      } else {
+        try {
+          msg.textContent = JSON.stringify(message);
+        } catch (err) {
+          msg.textContent = 'Unexpected response';
+        }
+      }
       toast.className = 'toast show';
       
       setTimeout(() => {
@@ -481,6 +803,21 @@
       }, 3000);
     }
     
+    document.getElementById('plans-refresh').addEventListener('click', loadPlans);
+    document.getElementById('results-refresh').addEventListener('click', () => {
+      state.runsPage = 1;
+      loadResults();
+    });
+    document.getElementById('results-prev').addEventListener('click', () => {
+      state.runsPage = Math.max(1, state.runsPage - 1);
+      loadResults();
+    });
+    document.getElementById('results-next').addEventListener('click', () => {
+      const totalPages = Math.max(1, Math.ceil(state.runsTotal / state.runsPageSize));
+      state.runsPage = Math.min(totalPages, state.runsPage + 1);
+      loadResults();
+    });
+
     // Initialize
     loadPlans();
   </script>

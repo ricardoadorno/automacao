@@ -83,6 +83,7 @@ export interface PlanMetadata {
 export interface PlanStep {
   id?: string;
   type: StepType;
+  description?: string;
   behaviorId?: string;
   exports?: Record<string, ExportRule>;
   requires?: string[];

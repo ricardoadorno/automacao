@@ -110,9 +110,10 @@ export async function executeSqlEvidenceStep(step: PlanStep, stepDir: string): P
   }
 
   const evidenceHtmlPath = path.join(stepDir, "evidence.html");
-  const evidenceHtml = buildEvidenceHtml(parsed, resultFile, {
+  const evidenceHtml = buildEvidenceHtml(parsed, {
     queryText,
-    executedAt
+    executedAt,
+    description: step.description
   });
   await fs.writeFile(evidenceHtmlPath, evidenceHtml, "utf-8");
   const evidenceFile = path.basename(evidenceHtmlPath);
@@ -192,36 +193,46 @@ function toRowsData(parsed: ParsedResult): Array<Record<string, string>> {
 
 function buildEvidenceHtml(
   parsed: ParsedResult,
-  resultName: string,
-  meta: { queryText: string; executedAt: string }
+  meta: { queryText: string; executedAt: string; description?: string }
 ): string {
   const tableName = extractTableName(meta.queryText);
-  const metadataHtml = [
-    `<div><strong>Executed at:</strong> ${escapeHtml(meta.executedAt)}</div>`,
-    tableName ? `<div><strong>Table:</strong> ${escapeHtml(tableName)}</div>` : "",
-    `<div><strong>Query:</strong></div>`,
-    `<pre>${escapeHtml(meta.queryText.trim())}</pre>`
-  ]
-    .filter(Boolean)
-    .join("");
-
-  if (parsed.type === "json") {
-    const rowsData = toRowsData(parsed);
-    const headers = collectHeaders(rowsData);
-    const table = renderTable(headers, rowsData);
-    return wrapHtml(`<h2>${resultName}</h2>${metadataHtml}${table}`);
-  }
-
-  const headers = parsed.data.headers;
-  const rowsData = parsed.data.rows.map((row) => {
-    const record: Record<string, string> = {};
-    headers.forEach((header, index) => {
-      record[header] = row[index] ?? "";
-    });
-    return record;
-  });
+  const rowsData = parsed.type === "json"
+    ? toRowsData(parsed)
+    : parsed.data.rows.map((row) => {
+        const record: Record<string, string> = {};
+        parsed.data.headers.forEach((header, index) => {
+          record[header] = row[index] ?? "";
+        });
+        return record;
+      });
+  const headers = parsed.type === "json" ? collectHeaders(rowsData) : parsed.data.headers;
+  const rowCount = rowsData.length;
   const table = renderTable(headers, rowsData);
-  return wrapHtml(`<h2>${resultName}</h2>${metadataHtml}${table}`);
+
+  const descriptionBlock = meta.description
+    ? `<div class="description">${escapeHtml(meta.description)}</div>`
+    : "";
+
+  const body = `
+    <div class="summary">
+      <div class="summary-line">
+        <span class="summary-label">Rows</span>${rowCount}
+        ${tableName ? `<span class="summary-label">Table</span>${escapeHtml(tableName)}` : ""}
+      </div>
+      <div class="summary-line">
+        <span class="summary-label">Executed</span>${escapeHtml(meta.executedAt)}
+      </div>
+      <div class="summary-line">
+        <span class="summary-label">Query</span>${escapeHtml(meta.queryText.trim())}
+      </div>
+    </div>
+    ${descriptionBlock}
+    <section class="section">
+      ${table}
+    </section>
+  `;
+
+  return wrapHtml(body);
 }
 
 function rowsToCsv(rows: Array<Record<string, unknown>>): string {
@@ -298,7 +309,7 @@ function collectHeaders(rows: Array<Record<string, string>>): string[] {
 
 function renderTable(headers: string[], rows: Array<Record<string, string>>): string {
   if (headers.length === 0) {
-    return "<p>No rows returned.</p>";
+    return '<div class="empty-state">No rows returned.</div>';
   }
   const headerHtml = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
   const rowsHtml = rows
@@ -307,7 +318,7 @@ function renderTable(headers: string[], rows: Array<Record<string, string>>): st
       return `<tr>${cells}</tr>`;
     })
     .join("");
-  return `<table><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+  return `<div class="table-wrap"><table class="result-table"><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table></div>`;
 }
 
 function wrapHtml(body: string): string {
@@ -316,18 +327,30 @@ function wrapHtml(body: string): string {
 <head>
   <meta charset="utf-8" />
   <style>
-    body { font-family: Arial, sans-serif; padding: 24px; }
-    table { border-collapse: collapse; width: 100%; }
-    td, th { border: 1px solid #ccc; padding: 6px; }
-    th { background: #f5f5f5; text-align: left; }
-    pre { background: #f8f8f8; padding: 12px; white-space: pre-wrap; }
+    body { font-family: "Trebuchet MS", "Lucida Sans Unicode", "Lucida Grande", sans-serif; background: #f5f2ec; padding: 12px; color: #1f2328; }
+    .card { max-width: 980px; margin: 0 auto; background: #fff; border-radius: 10px; box-shadow: 0 10px 28px rgba(25, 28, 32, 0.12); overflow: hidden; border: 1px solid #e2ddd3; padding: 10px; }
+    .summary { padding: 8px 10px; background: #f7f4ee; border: 1px solid #e2ddd3; border-radius: 8px; margin-bottom: 8px; font-size: 11px; line-height: 1.5; }
+    .summary-line { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 4px; }
+    .summary-line:last-child { margin-bottom: 0; }
+    .summary-label { color: #6a6f76; text-transform: uppercase; letter-spacing: 0.4px; font-size: 10px; margin-right: 4px; }
+    .description { padding: 8px 10px; border-radius: 8px; background: #fff7db; border: 1px solid #f0e0a8; font-size: 11px; margin-bottom: 8px; }
+    .section { background: #fff; border: 1px solid #e4dfd5; border-radius: 10px; padding: 10px; margin-bottom: 10px; box-shadow: 0 6px 14px rgba(22, 24, 27, 0.06); }
+    .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e1dbcf; }
+    .result-table { border-collapse: collapse; width: 100%; font-size: 11px; }
+    .result-table th, .result-table td { padding: 6px 8px; border-bottom: 1px solid #eee9df; text-align: left; }
+    .result-table th { background: #f1ede4; position: sticky; top: 0; z-index: 1; }
+    .result-table tbody tr:nth-child(even) { background: #fbfaf7; }
+    .empty-state { padding: 10px; border: 1px dashed #d4cec2; border-radius: 8px; color: #7a7f86; background: #fbfaf7; font-size: 11px; }
   </style>
 </head>
 <body>
-  ${body}
+  <div class="card">
+    ${body}
+  </div>
 </body>
 </html>`;
 }
+
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

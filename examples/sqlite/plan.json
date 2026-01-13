@@ -6,6 +6,9 @@
   },
   "behaviorsPath": "examples/sqlite/behaviors.json",
   "curlPath": "examples/sqlite/get-todo.curl",
+  "browser": {
+    "headless": true
+  },
   "steps": [
     {
       "id": "api-get-todo",

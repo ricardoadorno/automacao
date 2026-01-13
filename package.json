@@ -6,12 +6,13 @@
   "license": "UNLICENSED",
   "type": "commonjs",
   "scripts": {
-    "start": "tsc -p tsconfig.json && node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && node dist/index.js",
     "test": "vitest run",
-    "index": "node scripts/generate-run-index.js",
-    "serve": "node scripts/serve.js",
-    "view": "node scripts/generate-run-index.js && node scripts/serve.js",
-    "dashboard": "node scripts/dashboard.js"
+    "dashboard": "node scripts/generate-run-index.js && node scripts/dashboard.js",
+    "runs:index": "node scripts/generate-run-index.js",
+    "runs:serve": "node scripts/serve.js",
+    "runs:view": "node scripts/generate-run-index.js && node scripts/serve.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
