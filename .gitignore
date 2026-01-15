@@ -3,3 +3,7 @@ dist
 .env
 runs
 chrome-profile
+index.html
+examples/**/temp/
+examples/**/screenshots/
+examples/**/runs/

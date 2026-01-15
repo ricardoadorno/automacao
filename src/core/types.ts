@@ -1,3 +1,5 @@
+import { Context } from "./context";
+
 export type StepType = "browser" | "api" | "sqlEvidence" | "cli";
 
 export type ExportRule =
@@ -92,6 +94,7 @@ export interface PlanStep {
 
 export interface Plan {
   metadata: PlanMetadata;
+  context?: Context;
   steps: PlanStep[];
   failPolicy?: "stop" | "continue";
   behaviorsPath?: string;

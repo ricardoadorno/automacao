@@ -11,7 +11,9 @@ export type BehaviorAction =
   | { type: "scrollTo"; x?: number; y?: number }
   | { type: "scrollBy"; x?: number; y?: number }
   | { type: "setViewport"; width: number; height: number; deviceScaleFactor?: number }
-  | { type: "setZoom"; scale: number };
+  | { type: "setZoom"; scale: number }
+  | { type: "evaluate"; script: string }
+  | { type: "search"; text: string };
 
 export interface BehaviorDefinition {
   actions: BehaviorAction[];

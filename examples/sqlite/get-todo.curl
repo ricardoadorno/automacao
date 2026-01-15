@@ -1,2 +1,0 @@
-﻿curl 'https://jsonplaceholder.typicode.com/todos/1' \
-  -H 'Accept: application/json'

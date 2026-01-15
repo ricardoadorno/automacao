@@ -27,7 +27,11 @@ const sqliteConnections = new Map<string, SqliteDatabase>();
 let mysqlConnection: Connection | null = null;
 let mysqlConnectionKey = "";
 
-export async function executeSqlEvidenceStep(step: PlanStep, stepDir: string): Promise<SqlEvidenceResult> {
+export async function executeSqlEvidenceStep(
+  step: PlanStep, 
+  stepDir: string,
+  inputs: Record<string, unknown> = {}
+): Promise<SqlEvidenceResult> {
   const sqlConfig = step.config?.sql;
   if (!sqlConfig) {
     throw new Error("sqlEvidence step requires config.sql");
@@ -67,17 +71,28 @@ export async function executeSqlEvidenceStep(step: PlanStep, stepDir: string): P
     if (!sqlConfig.mysql) {
       throw new Error("mysql adapter requires config.sql.mysql");
     }
-    if (!sqlConfig.query) {
-      throw new Error("mysql adapter requires config.sql.query");
+    
+    // Support both inline query and queryPath
+    if (sqlConfig.queryPath) {
+      const queryAbs = path.resolve(sqlConfig.queryPath);
+      queryText = await fs.readFile(queryAbs, "utf-8");
+      queryText = interpolateQuery(queryText, inputs);
+    } else if (sqlConfig.query) {
+      queryText = sqlConfig.query;
+    } else {
+      throw new Error("mysql adapter requires either config.sql.query or config.sql.queryPath");
     }
+    
     queryOut = path.join(stepDir, "query.sql");
     resultOut = path.join(stepDir, "result.csv");
-    await fs.writeFile(queryOut, sqlConfig.query, "utf-8");
-    queryText = sqlConfig.query;
+    await fs.writeFile(queryOut, queryText, "utf-8");
 
     const connection = await getMysqlConnection(sqlConfig.mysql);
-    const [rows] = await connection.execute(sqlConfig.query);
-    resultRaw = rowsToCsv(rows as Array<Record<string, unknown>>);
+    const [rows] = await connection.execute(queryText);
+    
+    // Handle UPDATE/INSERT/DELETE that return ResultSetHeader
+    const rowsArray = Array.isArray(rows) ? rows : [];
+    resultRaw = rowsToCsv(rowsArray as Array<Record<string, unknown>>);
 
     await fs.writeFile(resultOut, resultRaw, "utf-8");
     queryFile = path.basename(queryOut);
@@ -354,6 +369,13 @@ function wrapHtml(body: string): string {
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function interpolateQuery(query: string, inputs: Record<string, unknown>): string {
+  return query.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    const value = inputs[key];
+    return value !== undefined ? String(value) : `{{${key}}}`;
+  });
 }
 
 async function screenshotFile(htmlPath: string, screenshotPath: string): Promise<void> {

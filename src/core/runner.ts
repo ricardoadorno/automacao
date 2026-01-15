@@ -24,7 +24,8 @@ export async function executePlan(plan: Plan, outDir: string): Promise<void> {
     ticket: plan.metadata.ticket ?? "",
     env: plan.metadata.env ?? "",
     runId,
-    startedAt: runStartedAt
+    startedAt: runStartedAt,
+    ...(plan.context ?? {})
   };
 
   logRunStart(runId, plan, outDir, totalSteps);
@@ -81,7 +82,7 @@ export async function executePlan(plan: Plan, outDir: string): Promise<void> {
           });
           notes = undefined;
         } else if (resolvedStep.type === "sqlEvidence") {
-          const sqlResult = await executeSqlEvidenceStep(resolvedStep, stepDir);
+          const sqlResult = await executeSqlEvidenceStep(resolvedStep, stepDir, context);
           status = "OK";
           outputs.screenshot = path.basename(sqlResult.screenshotPath);
           outputs.query = sqlResult.queryFile;

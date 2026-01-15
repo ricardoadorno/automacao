@@ -22,7 +22,7 @@ export async function loadCurl(curlPath: string): Promise<ParsedCurl> {
  */
 export function parseCurl(curlCommand: string): ParsedCurl {
   const normalized = curlCommand
-    .replace(/\\\n/g, " ")
+    .replace(/\\\s*\n\s*/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -31,20 +31,23 @@ export function parseCurl(curlCommand: string): ParsedCurl {
   const headers: Record<string, string> = {};
   let body: string | undefined;
 
-  // Extract URL
-  const urlMatch = normalized.match(/curl\s+['"]?([^\s'"]+)['"]?/);
+  // Extract URL - support multiple formats
+  const urlMatch = normalized.match(/--url\s+(\S+)/) || 
+                   normalized.match(/curl\s+['"]([^'"]+)['"]/) ||
+                   normalized.match(/curl\s+(\S+)/);
   if (urlMatch) {
     url = urlMatch[1];
   }
 
-  // Extract method
-  const methodMatch = normalized.match(/-X\s+(\w+)/i);
+  // Extract method - support both -X and --request
+  const methodMatch = normalized.match(/--request\s+(\w+)/i) || 
+                      normalized.match(/-X\s+(\w+)/i);
   if (methodMatch) {
     method = methodMatch[1].toUpperCase();
   }
 
-  // Extract headers
-  const headerMatches = normalized.matchAll(/-H\s+['"]([^'"]+)['"]/gi);
+  // Extract headers - support both -H and --header
+  const headerMatches = normalized.matchAll(/(?:--header|-H)\s+['"]([^'"]+)['"]/gi);
   for (const match of headerMatches) {
     const headerLine = match[1];
     const colonIndex = headerLine.indexOf(":");
@@ -55,8 +58,8 @@ export function parseCurl(curlCommand: string): ParsedCurl {
     }
   }
 
-  // Extract body
-  const dataMatch = normalized.match(/--data(?:-raw|-binary)?\s+['"](.+)['"]/i);
+  // Extract body - support --data, --data-raw, --data-binary, -d
+  const dataMatch = normalized.match(/(?:--data(?:-raw|-binary)?|-d)\s+['"](.+)['"]/is);
   if (dataMatch) {
     body = dataMatch[1];
   }
