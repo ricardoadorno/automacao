@@ -59,6 +59,10 @@ Este diretorio guarda planos de exemplo usados para demonstracao e testes locais
 - O que faz: demonstra cache de steps.
 - Rodar duas vezes para ver cache hit.
 
+### tabular-api-loop
+- Caminho: `examples/tabular-api-loop/plan.json`
+- O que faz: loop de API com JSONPlaceholder + viewer de CSV local.
+
 ## Fluxo ilustrado
 
 ```

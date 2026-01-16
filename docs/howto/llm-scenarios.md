@@ -66,6 +66,7 @@ Exemplo base:
 - `api`: use `request` com caminho `.curl` (ex: `scenarios/<slug>/request.curl`).
 - `browser`: use `behavior` com `behaviors.json`.
 - `sqlEvidence`: use `query` e `result` com `.sql` e `.csv`.
+- `tabular`: use `sourcePath` apontando para `.csv` ou `.xlsx`.
 - `cli`: use `command` e `args` simples.
 - `specialist`: use `action` para tarefas internas (ex: escrever arquivo).
 
@@ -122,4 +123,3 @@ npm start -- --plan scenarios/<slug>/plan.json --out runs
 - Prefira exemplos pequenos e reais a fluxos gigantes.
 - Nenhum asset deve depender de rede externa real.
 - Sempre atualize `scenarios/README.md` com o novo cenario.
-

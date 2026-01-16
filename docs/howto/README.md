@@ -14,6 +14,7 @@ Este guia e o ponto de entrada para usuarios do Automacao. Aqui voce encontra o 
 - Template de relatorio e docx: `docs/howto/report-template.md`
 - Browser behaviors: `docs/howto/browser-behaviors.md`
 - SQL evidence: `docs/howto/sql-evidence.md`
+- Tabular (CSV/XLSX): `docs/howto/tabular.md`
 - Criar plans do zero: `docs/howto/create-plans.md`
 - Dashboard (frontend React): `docs/howto/dashboard.md`
 - Specialist: `docs/howto/specialist.md`
@@ -24,7 +25,7 @@ Este guia e o ponto de entrada para usuarios do Automacao. Aqui voce encontra o 
 ## Conceitos rapidos
 
 - Plan: arquivo JSON declarativo com `metadata`, `steps` e configuracoes globais.
-- Step: unidade de execucao. Pode ser `api`, `sqlEvidence`, `browser`, `cli`, `specialist` ou `logstream`.
+- Step: unidade de execucao. Pode ser `api`, `sqlEvidence`, `tabular`, `browser`, `cli`, `specialist` ou `logstream`.
 - Run: cada execucao gera uma pasta em `runs/` com artefatos e `00_runSummary.json`.
 - Context: dados compartilhados entre steps para exportar e reutilizar valores.
 

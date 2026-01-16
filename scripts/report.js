@@ -23,6 +23,8 @@ function buildEvidenceCatalog(runSummary, runId) {
       addArtifact(artifacts, "stdout", outputs.stdout, runId, stepDir);
       addArtifact(artifacts, "stderr", outputs.stderr, runId, stepDir);
       addArtifact(artifacts, "file", outputs.file, runId, stepDir);
+      addArtifact(artifacts, "viewer", outputs.viewer, runId, stepDir);
+      addArtifact(artifacts, "source", outputs.source, runId, stepDir);
       return {
         id: step.id,
         type: step.type,

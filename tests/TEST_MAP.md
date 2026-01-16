@@ -25,6 +25,7 @@ This file maps backlog goals to automated tests.
 - browser reuseSession: `tests/p2-browser-reuse.spec.ts`
 - specialist writeFile: `tests/p2-specialist.spec.ts`
 - logstream evidence: `tests/p2-logstream.spec.ts`
+- tabular viewer evidence: `tests/p2-tabular.spec.ts`
 - browser waitFor request/response: `tests/p2-browser-wait.spec.ts`
 - dashboard e2e headless: `tests/p2-dashboard-e2e.spec.ts`
 

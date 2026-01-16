@@ -13,6 +13,7 @@ This document describes domain boundaries and responsibilities.
 - `cli`: Executes local commands and captures stdout/stderr.
 - `specialist`: Handles small, recurring tasks that are not CLI or API.
 - `logstream`: Registers external logstream links as evidence artifacts.
+- `tabular`: Generates CSV/XLSX viewer HTML and captures screenshots.
 
 ## subdomains (guideline)
 - Prefer new subfolders under a domain for specialized variants.

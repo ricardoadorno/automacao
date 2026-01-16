@@ -1,6 +1,13 @@
 import { Context } from "./context";
 
-export type StepType = "browser" | "api" | "sqlEvidence" | "cli" | "specialist" | "logstream";
+export type StepType =
+  | "browser"
+  | "api"
+  | "sqlEvidence"
+  | "cli"
+  | "specialist"
+  | "logstream"
+  | "tabular";
 
 export type ExportRule =
   | {
@@ -84,6 +91,21 @@ export interface StepConfig {
   logstream?: {
     url: string;
     title?: string;
+  };
+  tabular?: {
+    sourcePath: string;
+    format?: "csv" | "xlsx";
+    delimiter?: string;
+    sheet?: string | number;
+    maxRows?: number;
+    viewer?: {
+      mode?: "lite" | "tabulator";
+      title?: string;
+    };
+    capture?: {
+      enabled?: boolean;
+      fullPage?: boolean;
+    };
   };
 }
 

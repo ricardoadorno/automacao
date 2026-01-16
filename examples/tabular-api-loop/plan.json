@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "feature": "tabular-api-loop",
+    "ticket": "EX-010",
+    "env": "local"
+  },
+  "curlPath": "examples/tabular-api-loop/request.curl",
+  "inputs": {
+    "items": [
+      { "userId": 1 },
+      { "userId": 2 },
+      { "userId": 3 }
+    ]
+  },
+  "steps": [
+    {
+      "id": "fetch-posts",
+      "type": "api",
+      "description": "Fetch posts from JSONPlaceholder",
+      "loop": { "usePlanItems": true }
+    },
+    {
+      "id": "view-csv",
+      "type": "tabular",
+      "description": "Open local CSV with filters",
+      "config": {
+        "tabular": {
+          "sourcePath": "examples/tabular-api-loop/data.csv",
+          "viewer": { "mode": "lite", "title": "Sample CSV" },
+          "maxRows": 200
+        }
+      }
+    }
+  ]
+}

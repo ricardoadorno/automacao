@@ -31,6 +31,7 @@ O agente deve suportar, no minimo:
 - browser: executa um behavior Playwright e captura screenshots
 - api: executa um curl, gera evidence HTML e exporta response
 - sqlEvidence: recebe query.sql + result.csv e gera evidencia verificavel com HTML renderizado, metadados simples e print
+- tabular: gera viewer HTML para CSV/XLSX com filtros e print
 - cli: executa um comando local, grava stdout/stderr e metadados simples
 - specialist: tarefas de escrita/append em arquivos e JSON estruturado
 - logstream: gera evidencias HTML a partir de logs
@@ -41,6 +42,7 @@ Config basica por step (exemplos de campos):
 - api: usa curlPath no plan e exports de responseData/responseText
 - browser: behaviorId, config.retries, config.retryDelayMs, config.browser.capture
 - sqlEvidence: config.sql.queryPath, config.sql.resultPath, config.sql.expectRows
+- tabular: config.tabular.sourcePath, config.tabular.viewer, config.tabular.maxRows
 - cli: config.cli.command, config.cli.args, config.cli.cwd, config.cli.timeoutMs
 - specialist: config.specialist.task, config.specialist.output
 - logstream: config.logstream.entries (titulo, nivel, corpo)
@@ -271,6 +273,7 @@ O codigo agora e organizado por dominios, para facilitar debug e extensao:
 - `src/domains/cli/`: CLI runner e evidencia HTML
 - `src/domains/specialist/`: tarefas utilitarias (arquivos/JSON)
 - `src/domains/logstream/`: evidencias HTML a partir de logs
+- `src/domains/tabular/`: viewer CSV/XLSX com evidencia e screenshot
 
 ## 10) Testes
 

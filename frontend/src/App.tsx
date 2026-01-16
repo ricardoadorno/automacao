@@ -1970,6 +1970,9 @@ function updateGroupStatus(
   },
   line: string
 ) {
+  if (!/\bStep\s+\d{2}\/\d+/.test(line)) {
+    return;
+  }
   if (line.includes(" OK")) {
     group.statusLabel = "OK";
     group.statusClass = "ok";

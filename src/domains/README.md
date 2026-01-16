@@ -9,3 +9,4 @@ Each subfolder implements one step type. Keep responsibilities narrow and docume
 - `cli`: Local command execution only (avoid external integrations here).
 - `specialist`: Small recurring utilities.
 - `logstream`: External logstream links captured as evidence.
+- `tabular`: CSV/XLSX viewer generation + evidence capture.

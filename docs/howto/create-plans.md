@@ -95,7 +95,7 @@ scenarios/<slug-do-plan>/
 ## Fields importantes em steps
 
 - `id`: unico e curto.
-- `type`: `api`, `sqlEvidence`, `browser`, `cli`, `specialist`.
+- `type`: `api`, `sqlEvidence`, `tabular`, `browser`, `cli`, `specialist`, `logstream`.
 - `label`: nome amigavel para o dashboard.
 - `requires`: chaves de contexto obrigatorias.
 - `exports`: campos exportados para o contexto global.

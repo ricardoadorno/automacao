@@ -1,0 +1,1 @@
+curl --request GET --url https://jsonplaceholder.typicode.com/posts?userId={{userId}}

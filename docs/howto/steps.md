@@ -15,6 +15,11 @@ Use este guia para entender o que cada tipo de step faz e como configurar.
 - Gera `query.sql`, `result.csv` e `evidence.html`.
 - Requer `queryPath` e configuracao do adapter.
 
+### Tabular (`tabular`)
+- Visualiza CSV/XLSX em HTML interativo.
+- Gera `viewer.html` e opcionalmente `screenshot.png`.
+- Requer `config.tabular.sourcePath`.
+
 ### Browser (`browser`)
 - Executa behaviors e gera screenshot.
 - Suporta `reuseSession` para reaproveitar o browser.
@@ -73,5 +78,19 @@ SQL Evidence:
 {
   "type": "sqlEvidence",
   "config": { "sql": { "adapter": "sqlite", "dbPath": "scenarios/fluxo/sample.db", "queryPath": "scenarios/fluxo/query.sql" } }
+}
+```
+
+Tabular:
+```json
+{
+  "type": "tabular",
+  "config": {
+    "tabular": {
+      "sourcePath": "scenarios/fluxo/data.csv",
+      "viewer": { "mode": "lite", "title": "Planilha de entrada" },
+      "maxRows": 200
+    }
+  }
 }
 ```

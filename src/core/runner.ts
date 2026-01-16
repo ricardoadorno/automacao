@@ -12,6 +12,7 @@ import { closeSqlConnections, executeSqlEvidenceStep } from "../domains/sql/sql"
 import { executeCliStep } from "../domains/cli/cli";
 import { executeSpecialistStep } from "../domains/specialist/specialist";
 import { executeLogstreamStep } from "../domains/logstream/logstream";
+import { executeTabularStep } from "../domains/tabular/tabular";
 import { Plan, PlanStep, StepResult } from "./types";
 import { createRunId, nowIso } from "./utils";
 
@@ -327,6 +328,24 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
       status = "OK";
       outputs.evidence = logResult.evidenceFile;
       notes = undefined;
+    } else if (resolvedStep.type === "tabular") {
+      const tabularResult = await executeTabularStep(resolvedStep, stepDir);
+      status = "OK";
+      outputs.viewer = tabularResult.viewerFile;
+      outputs.source = tabularResult.sourceFile;
+      if (tabularResult.screenshotPath) {
+        outputs.screenshot = path.basename(tabularResult.screenshotPath);
+      }
+      if (typeof tabularResult.rows === "number") {
+        outputs.rows = tabularResult.rows;
+      }
+      if (typeof tabularResult.columns === "number") {
+        outputs.columns = tabularResult.columns;
+      }
+      if (tabularResult.sheet !== null && tabularResult.sheet !== undefined) {
+        outputs.sheet = tabularResult.sheet;
+      }
+      notes = undefined;
     }
 
     durationMs = Date.now() - stepStartMs;
@@ -542,6 +561,15 @@ async function buildCacheKey(
     payload.sqlAdapter = sql.adapter ?? "";
   }
 
+  if (step.type === "tabular" && step.config?.tabular) {
+    const tabular = step.config.tabular;
+    payload.tabularSource = await readFileSafe(tabular.sourcePath);
+    payload.tabularFormat = tabular.format ?? "";
+    payload.tabularSheet = tabular.sheet ?? null;
+    payload.tabularMaxRows = tabular.maxRows ?? null;
+    payload.tabularViewer = tabular.viewer ?? null;
+  }
+
   const hash = createHash("sha256").update(stableStringify(payload)).digest("hex");
   return hash;
 }
@@ -636,6 +664,8 @@ function collectArtifactFiles(outputs: Record<string, unknown>): string[] {
   addArtifactFile(files, outputs.query);
   addArtifactFile(files, outputs.result);
   addArtifactFile(files, outputs.evidence);
+  addArtifactFile(files, outputs.viewer);
+  addArtifactFile(files, outputs.source);
   addArtifactFile(files, outputs.stdout);
   addArtifactFile(files, outputs.stderr);
   return files;
@@ -850,6 +880,19 @@ function describeStep(step: PlanStep): string {
     return parts.length > 0 ? ` [${parts.join(" ")}]` : "";
   }
 
+  if (step.type === "tabular") {
+    const tabular = step.config?.tabular;
+    if (!tabular) {
+      return "";
+    }
+    const parts = [
+      tabular.sourcePath ? `source=${path.basename(tabular.sourcePath)}` : null,
+      tabular.format ? `format=${tabular.format}` : null,
+      tabular.sheet !== undefined ? `sheet=${tabular.sheet}` : null
+    ].filter(Boolean);
+    return parts.length > 0 ? ` [${parts.join(" ")}]` : "";
+  }
+
   return "";
 }
 
@@ -867,6 +910,9 @@ function describeOutputs(outputs: Record<string, unknown>): string {
   if (typeof outputs.exitCode === "number") {
     parts.push(`exitCode=${outputs.exitCode}`);
   }
+  if (typeof outputs.columns === "number") {
+    parts.push(`columns=${outputs.columns}`);
+  }
   return parts.length > 0 ? ` [${parts.join(" ")}]` : "";
 }
 
@@ -881,6 +927,8 @@ function renderArtifacts(outputs: Record<string, unknown>): string {
   addArtifactLink(links, stepDir, outputs.query, "query");
   addArtifactLink(links, stepDir, outputs.result, "result");
   addArtifactLink(links, stepDir, outputs.evidence, "evidence");
+  addArtifactLink(links, stepDir, outputs.viewer, "viewer");
+  addArtifactLink(links, stepDir, outputs.source, "source");
   addArtifactLink(links, stepDir, outputs.file, "file");
   addArtifactLink(links, stepDir, outputs.stdout, "stdout");
   addArtifactLink(links, stepDir, outputs.stderr, "stderr");

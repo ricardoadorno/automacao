@@ -17,7 +17,7 @@ async function main() {
 
   const runs = [];
   for (const entry of entries) {
-    if (!entry.isDirectory()) {
+    if (!entry.isDirectory() || entry.name === "tmp-plans") {
       continue;
     }
     const runId = entry.name;

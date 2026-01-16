@@ -376,6 +376,16 @@ function buildStepDetailData(step, behaviors, curl) {
     };
   }
 
+  if (step.type === "tabular") {
+    const tabular = step.config && step.config.tabular ? step.config.tabular : {};
+    return {
+      sourcePath: tabular.sourcePath || "",
+      format: tabular.format || "",
+      sheet: tabular.sheet ?? null,
+      maxRows: tabular.maxRows ?? null
+    };
+  }
+
   return null;
 }
 
@@ -444,6 +454,15 @@ function buildDefaultDescription(type, details) {
     const suffix = [task, outputPath].filter(Boolean).join(" ");
     return suffix ? `Specialist ${suffix}` : "Specialist task";
   }
+  if (type === "tabular") {
+    const source = details && details.sourcePath ? details.sourcePath : "";
+    const format = details && details.format ? details.format : "";
+    const sheet = details && details.sheet !== null && details.sheet !== undefined
+      ? `sheet ${details.sheet}`
+      : "";
+    const suffix = [source, format, sheet].filter(Boolean).join(" | ");
+    return suffix ? `Tabular ${suffix}` : "Tabular evidence";
+  }
   return "Step";
 }
 
@@ -465,6 +484,9 @@ function defaultArtifactsForType(type) {
   }
   if (type === "logstream") {
     return ["evidence.html"];
+  }
+  if (type === "tabular") {
+    return ["viewer.html", "screenshot.png"];
   }
   return [];
 }
@@ -833,6 +855,7 @@ async function handleRuns(req, res) {
     const runIds = entries
       .filter(e => e.isDirectory())
       .map(e => e.name)
+      .filter((name) => name !== "tmp-plans")
       .sort((a, b) => b.localeCompare(a));
     const total = runIds.length;
     const start = (page - 1) * pageSize;
@@ -1130,6 +1153,9 @@ function buildAutoReportFromSummary(summary, runId) {
     const artifacts = [];
     if (outputs.evidence) {
       artifacts.push({ label: "evidence", filename: outputs.evidence });
+    }
+    if (outputs.viewer) {
+      artifacts.push({ label: "viewer", filename: outputs.viewer });
     }
     if (outputs.screenshot) {
       artifacts.push({ label: "screenshot", filename: outputs.screenshot });
