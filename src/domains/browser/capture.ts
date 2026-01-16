@@ -9,6 +9,7 @@ export interface CaptureTilesConfig {
   overlapPx?: number;
   maxTiles?: number;
   waitMs?: number;
+  waitForNetworkIdle?: boolean;
 }
 
 export interface CaptureConfig {
@@ -83,7 +84,7 @@ async function captureTiles(page: Page, stepDir: string, config?: CaptureTilesCo
   const metrics = await getPageMetrics(page);
   const overlap = config?.overlapPx ?? 0;
   const direction = config?.direction ?? "horizontal";
-  const waitMs = config?.waitMs ?? 150;
+  const waitMs = config?.waitMs ?? 0;
 
   const xPositions = direction === "vertical"
     ? [metrics.scrollX]
@@ -105,6 +106,9 @@ async function captureTiles(page: Page, stepDir: string, config?: CaptureTilesCo
         break;
       }
       await scrollTo(page, x, y);
+      if (config?.waitForNetworkIdle) {
+        await page.waitForLoadState("networkidle");
+      }
       if (waitMs > 0) {
         await page.waitForTimeout(waitMs);
       }

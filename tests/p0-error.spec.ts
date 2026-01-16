@@ -7,10 +7,13 @@ import { executePlan } from "../src/core/runner";
 import { Plan } from "../src/core/types";
 
 const executeBrowserStep = vi.fn();
+const executeBrowserStepWithSession = vi.fn();
 
 vi.mock("../src/domains/browser/browser", () => {
   return {
-    executeBrowserStep: (...args: unknown[]) => executeBrowserStep(...args)
+    executeBrowserStep: (...args: unknown[]) => executeBrowserStep(...args),
+    executeBrowserStepWithSession: (...args: unknown[]) =>
+      executeBrowserStepWithSession(...args)
   };
 });
 

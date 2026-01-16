@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "feature": "sqlite-jsonplaceholder",
+    "ticket": "SQL-JSON-001",
+    "env": "local"
+  },
+  "steps": [
+    {
+      "id": "posts-with-users",
+      "type": "sqlEvidence",
+      "label": "List posts with user data",
+      "config": {
+        "sql": {
+          "adapter": "sqlite",
+          "dbPath": "examples/sqlite-jsonplaceholder/data/sample2.db",
+          "queryPath": "examples/sqlite-jsonplaceholder/query.sql",
+          "expectRows": 5
+        }
+      }
+    }
+  ]
+}

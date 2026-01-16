@@ -24,11 +24,14 @@ This file maps backlog goals to automated tests.
 - loop de tarefas: `tests/p2-loop.spec.ts`
 - browser reuseSession: `tests/p2-browser-reuse.spec.ts`
 - specialist writeFile: `tests/p2-specialist.spec.ts`
+- logstream evidence: `tests/p2-logstream.spec.ts`
+- browser waitFor request/response: `tests/p2-browser-wait.spec.ts`
 - dashboard e2e headless: `tests/p2-dashboard-e2e.spec.ts`
 
 ## P3 - API com Curl
 - parse/interpolacao de curl + execucao: `tests/p2-api.spec.ts`
 - evidencia HTML do API/CLI: `tests/p3-evidence.spec.ts`
+- docs HTML/docx (relatorio): `tests/p3-docs.spec.ts`
 
 ## P4 - Browser robusto
 - retries e attempts: `tests/p4-browser.spec.ts`

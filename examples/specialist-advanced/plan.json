@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "feature": "Specialist catalog",
+    "env": "local"
+  },
+  "steps": [
+    {
+      "id": "write-note",
+      "type": "specialist",
+      "description": "Cria arquivo com anotacao inicial",
+      "config": {
+        "specialist": {
+          "task": "writeFile",
+          "outputPath": "note.txt",
+          "content": "Inicio do run {runId}\n"
+        }
+      }
+    },
+    {
+      "id": "append-note",
+      "type": "specialist",
+      "description": "Anexa mais informacoes ao arquivo",
+      "config": {
+        "specialist": {
+          "task": "appendFile",
+          "outputPath": "note.txt",
+          "content": "Linha extra\n"
+        }
+      }
+    },
+    {
+      "id": "write-json",
+      "type": "specialist",
+      "description": "Grava dados em JSON",
+      "config": {
+        "specialist": {
+          "task": "writeJson",
+          "outputPath": "data.json",
+          "data": { "status": "ok", "count": 2 }
+        }
+      }
+    }
+  ]
+}

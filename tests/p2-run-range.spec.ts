@@ -61,14 +61,9 @@ describe("P2 run range", () => {
     calls.length = 0;
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "automacao-"));
     const outDir = path.join(tempRoot, "runs");
-    const plan: Plan = {
-      metadata: { feature: "range" },
-      steps: [
-        { id: "step-1", type: "api" },
-        { id: "step-2", type: "sqlEvidence", config: { sql: { query: "select 1" } } },
-        { id: "step-3", type: "cli", config: { cli: { command: "node", args: ["-e", "console.log('ok')"] } } }
-      ]
-    };
+    const fixturePath = path.join(process.cwd(), "tests", "fixtures", "plans", "range.json");
+    const raw = await fs.readFile(fixturePath, "utf-8");
+    const plan = JSON.parse(raw) as Plan;
 
     await executePlan(plan, outDir, { fromStep: 2, toStep: 3 });
 

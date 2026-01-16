@@ -26,8 +26,13 @@ Use este guia para entender o que cada tipo de step faz e como configurar.
 - Requer `command` e `args`.
 
 ### Specialist (`specialist`)
-- Tarefas utilitarias como `writeFile`.
+- Tarefas utilitarias como `writeFile`, `appendFile`, `writeJson`.
 - Requer `task` no config.
+
+### Logstream (`logstream`)
+- Registra link de logstream como evidencia.
+- Gera `evidence.html`.
+- Requer `config.logstream.url`.
 
 ## Configuracoes comuns
 
@@ -51,6 +56,11 @@ CLI:
 Specialist:
 ```json
 { "type": "specialist", "config": { "specialist": { "task": "writeFile", "outputPath": "note.txt", "content": "run {runId}" } } }
+```
+
+Logstream:
+```json
+{ "type": "logstream", "config": { "logstream": { "url": "https://logs.example.com/stream/123", "title": "AWS logs" } } }
 ```
 
 API:

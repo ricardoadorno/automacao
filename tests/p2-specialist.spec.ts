@@ -79,4 +79,75 @@ describe("P2 specialist", () => {
 
     expect(content).toBe("hello");
   });
+
+  it("appends to an existing file", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "automacao-specialist-"));
+    const outDir = path.join(tempRoot, "runs");
+
+    const plan: Plan = {
+      metadata: { feature: "specialist-append" },
+      steps: [
+        {
+          id: "write-file",
+          type: "specialist",
+          config: {
+            specialist: {
+              task: "writeFile",
+              outputPath: "note.txt",
+              content: "hello\n"
+            }
+          }
+        },
+        {
+          id: "append-file",
+          type: "specialist",
+          config: {
+            specialist: {
+              task: "appendFile",
+              outputPath: "note.txt",
+              content: "world\n"
+            }
+          }
+        }
+      ]
+    };
+
+    await executePlan(plan, outDir);
+
+    const runId = (await fs.readdir(outDir))[0];
+    const notePath = path.join(outDir, runId, "steps", "01_write-file", "note.txt");
+    const content = await fs.readFile(notePath, "utf-8");
+
+    expect(content).toBe("hello\nworld\n");
+  });
+
+  it("writes JSON content", async () => {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "automacao-specialist-"));
+    const outDir = path.join(tempRoot, "runs");
+
+    const plan: Plan = {
+      metadata: { feature: "specialist-json" },
+      steps: [
+        {
+          id: "write-json",
+          type: "specialist",
+          config: {
+            specialist: {
+              task: "writeJson",
+              outputPath: "data.json",
+              data: { ok: true, count: 2 }
+            }
+          }
+        }
+      ]
+    };
+
+    await executePlan(plan, outDir);
+
+    const runId = (await fs.readdir(outDir))[0];
+    const jsonPath = path.join(outDir, runId, "steps", "01_write-json", "data.json");
+    const content = await fs.readFile(jsonPath, "utf-8");
+
+    expect(JSON.parse(content)).toEqual({ ok: true, count: 2 });
+  });
 });

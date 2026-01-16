@@ -11,6 +11,7 @@ import { executeApiStep } from "../domains/api/api";
 import { closeSqlConnections, executeSqlEvidenceStep } from "../domains/sql/sql";
 import { executeCliStep } from "../domains/cli/cli";
 import { executeSpecialistStep } from "../domains/specialist/specialist";
+import { executeLogstreamStep } from "../domains/logstream/logstream";
 import { Plan, PlanStep, StepResult } from "./types";
 import { createRunId, nowIso } from "./utils";
 
@@ -46,7 +47,8 @@ export async function executePlan(
     runId,
     startedAt: runStartedAt
   });
-  const reuseSession = plan.browser?.reuseSession ?? false;
+  const browserStepsCount = plan.steps.filter((step) => step.type === "browser").length;
+  const reuseSession = plan.browser?.reuseSession ?? browserStepsCount > 1;
   const sharedSession: BrowserSession | null = reuseSession
     ? await createSession(plan.browser)
     : null;
@@ -135,6 +137,7 @@ export async function executePlan(
       ticket: plan.metadata.ticket ?? null,
       env: plan.metadata.env ?? null,
       steps: results,
+      loopSummary: buildLoopSummary(results),
       context
     };
 
@@ -191,6 +194,8 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
   await fs.mkdir(stepDir, { recursive: true });
 
   const stepStartedAt = nowIso();
+  const stepStartMs = Date.now();
+  let durationMs = 0;
   let status: StepResult["status"] = "SKIPPED";
   const outputs: Record<string, unknown> = {};
   outputs.stepDir = `steps/${stepDirName}`;
@@ -229,17 +234,20 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
         outputs.loopItem = loopInfo ? loopInfo.item : undefined;
         Object.assign(outputs, cachedOutputs ?? {});
         outputs.stepDir = `steps/${stepDirName}`;
+        durationMs = Date.now() - stepStartMs;
+        outputs.durationMs = durationMs;
         if (cachedExports && resolvedStep.exports) {
           applyExports(context, resolvedStep.exports, cachedExports);
         }
-        logStepCacheHit(stepNumber, totalSteps, resolvedStep, loopLabel);
-        await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, notes);
+        logStepCacheHit(stepNumber, totalSteps, resolvedStep, durationMs, loopLabel);
+        await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, durationMs, notes);
         return {
           id: buildStepResultId(resolvedStep, loopInfo),
           type: resolvedStep.type,
           status,
           startedAt: stepStartedAt,
           finishedAt: nowIso(),
+          durationMs,
           inputs: resolvedStep,
           outputs,
           notes
@@ -258,6 +266,7 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
         outputs.screenshots = browserResult.screenshotPaths.map((item) => path.basename(item));
       }
       outputs.attempts = browserResult.attempts;
+      outputs.actionTimings = browserResult.actionTimings;
       notes = undefined;
     } else if (resolvedStep.type === "api") {
       const apiResult = await executeApiStep(resolvedStep, curlPath, stepDir, iterationContext);
@@ -313,12 +322,21 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
       }
       outputs.filePath = specialistResult.filePath;
       notes = undefined;
+    } else if (resolvedStep.type === "logstream") {
+      const logResult = await executeLogstreamStep(resolvedStep, stepDir);
+      status = "OK";
+      outputs.evidence = logResult.evidenceFile;
+      notes = undefined;
     }
 
+    durationMs = Date.now() - stepStartMs;
+    if (typeof outputs.durationMs !== "number") {
+      outputs.durationMs = durationMs;
+    }
     outputs.loopIndex = loopInfo ? loopInfo.index + 1 : undefined;
     outputs.loopTotal = loopInfo ? loopInfo.total : undefined;
     outputs.loopItem = loopInfo ? loopInfo.item : undefined;
-    logStepSuccess(stepNumber, totalSteps, resolvedStep, outputs, loopLabel);
+    logStepSuccess(stepNumber, totalSteps, resolvedStep, outputs, durationMs, loopLabel);
 
     if (shouldUseCache(cacheRoot, resolvedStep)) {
       const cacheKey = await buildCacheKey(resolvedStep, plan, behaviors, iterationContext, loopInfo?.item ?? null);
@@ -329,18 +347,23 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
   } catch (error) {
     status = "FAIL";
     notes = error instanceof Error ? error.message : String(error);
-    logStepFailure(stepNumber, totalSteps, step, notes, loopLabel);
+    durationMs = Date.now() - stepStartMs;
+    if (typeof outputs.durationMs !== "number") {
+      outputs.durationMs = durationMs;
+    }
+    logStepFailure(stepNumber, totalSteps, step, notes, durationMs, loopLabel);
     await writeErrorFile(errorPath, error);
     await writeErrorPng(errorPngPath);
     if ((plan.failPolicy ?? "stop") === "stop") {
       logStopOnFailure();
-      await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, notes);
+      await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, durationMs, notes);
       return {
         id: buildStepResultId(resolvedStep, loopInfo),
         type: resolvedStep.type,
         status,
         startedAt: stepStartedAt,
         finishedAt: nowIso(),
+        durationMs,
         inputs: resolvedStep,
         outputs,
         notes
@@ -348,12 +371,16 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
     }
   }
 
+  if (!durationMs) {
+    durationMs = Date.now() - stepStartMs;
+  }
   const result: StepResult = {
     id: buildStepResultId(resolvedStep, loopInfo),
     type: resolvedStep.type,
     status,
     startedAt: stepStartedAt,
     finishedAt: nowIso(),
+    durationMs,
     inputs: resolvedStep,
     outputs,
     notes
@@ -646,9 +673,15 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function logStepCacheHit(index: number, total: number, step: PlanStep, suffix = ""): void {
+function logStepCacheHit(
+  index: number,
+  total: number,
+  step: PlanStep,
+  durationMs: number,
+  suffix = ""
+): void {
   const label = step.id ?? step.type;
-  console.log(`ÃY"Ã¦ Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} SKIPPED (cache)`);
+  console.log(`Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} SKIPPED (cache) durationMs=${durationMs}`);
 }
 
 function buildIndexHtml(summary: { runId: string; steps: StepResult[] }): string {
@@ -738,16 +771,24 @@ function logStepSuccess(
   total: number,
   step: PlanStep,
   outputs: Record<string, unknown>,
+  durationMs: number,
   suffix = ""
 ): void {
   const label = step.id ?? step.type;
   const outputSummary = describeOutputs(outputs);
-  console.log(`âœ… Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} OK${outputSummary}`);
+  console.log(`Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} OK${outputSummary} durationMs=${durationMs}`);
 }
 
-function logStepFailure(index: number, total: number, step: PlanStep, notes: string, suffix = ""): void {
+function logStepFailure(
+  index: number,
+  total: number,
+  step: PlanStep,
+  notes: string,
+  durationMs: number,
+  suffix = ""
+): void {
   const label = step.id ?? step.type;
-  console.log(`âŒ Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} FAIL: ${notes}`);
+  console.log(`Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} FAIL: ${notes} durationMs=${durationMs}`);
 }
 
 function logStopOnFailure(): void {
@@ -877,6 +918,33 @@ function addArtifactLinks(
   }
 }
 
+function buildLoopSummary(results: StepResult[]) {
+  const summary: Record<
+    string,
+    { total?: number; items: Array<{ index: number; status: StepResult["status"]; outputs: Record<string, unknown> }> }
+  > = {};
+  for (const result of results) {
+    const loopIndex = result.outputs.loopIndex;
+    if (typeof loopIndex !== "number") {
+      continue;
+    }
+    const baseId = result.id.split("__")[0];
+    if (!summary[baseId]) {
+      summary[baseId] = { total: undefined, items: [] };
+    }
+    const total = result.outputs.loopTotal;
+    if (typeof total === "number") {
+      summary[baseId].total = total;
+    }
+    summary[baseId].items.push({
+      index: loopIndex,
+      status: result.status,
+      outputs: result.outputs
+    });
+  }
+  return summary;
+}
+
 async function finalizeStep(
   stepDir: string,
   originalStep: PlanStep,
@@ -884,6 +952,7 @@ async function finalizeStep(
   status: StepResult["status"],
   startedAt: string,
   outputs: Record<string, unknown>,
+  durationMs: number,
   notes?: string
 ): Promise<void> {
   const result: StepResult = {
@@ -892,6 +961,7 @@ async function finalizeStep(
     status,
     startedAt,
     finishedAt: nowIso(),
+    durationMs,
     inputs: resolvedStep ?? originalStep,
     outputs,
     notes

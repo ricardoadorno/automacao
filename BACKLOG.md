@@ -9,69 +9,70 @@ Principios
 - Modularidade: dominios com limites claros e extensao segura.
 
 ## Epicos e prioridades
+Legenda de status: [DONE] concluido, [PARTIAL] parcial, [TODO] pendente.
 
 ### P0 (prioridade alta) - Fundacao e controle
 1) Dashboard interativo
-- Rodar passos no click (start/stop e range de steps).
-- Melhorar feedback: status por step, tempo decorrido, logs parciais, erros e retries.
-- Running segmentado por step, com bloco visual destacado e logs agrupados.
+- [DONE] Rodar passos no click (start/stop e range de steps).
+- [DONE] Melhorar feedback: status por step, tempo decorrido, logs parciais, erros e retries.
+- [DONE] Running segmentado por step, com bloco visual destacado e logs agrupados.
 
 2) Dominio de gatilho (event-driven)
-- Criar dominio separado para configurar gatilhos (ex: EventBridge, cron externo).
-- Observacao ativa do status com atualizacao em quase tempo real.
-- Exibir links do logstream no dashboard.
-- Encerrar observacao automaticamente ao sucesso/erro e permitir parar manualmente.
+- [DONE] Criar dominio separado para configurar gatilhos (ex: EventBridge, cron externo).
+- [DONE] Observacao ativa do status com atualizacao em quase tempo real.
+- [DONE] Exibir links do logstream no dashboard.
+- [DONE] Encerrar observacao automaticamente ao sucesso/erro e permitir parar manualmente.
 
 3) Cache de passos
-- Evitar reexecucao quando entrada/estado nao mudou.
-- Definir estrategia de hash para inputs + artefatos utilizados.
-- Exibir no dashboard quando um step foi pulado por cache.
+- [DONE] Evitar reexecucao quando entrada/estado nao mudou.
+- [DONE] Definir estrategia de hash para inputs + artefatos utilizados.
+- [DONE] Exibir no dashboard quando um step foi pulado por cache.
 
 ### P1 (prioridade media) - Qualidade e escala
 4) Documentos e evidencias
-- Gerar docs automaticamente a partir de plans e steps.
-- Usar output de evidencias para montar resultados customizados.
-- Padrao de template para relatorios simples e exportavel.
+- [DONE] Usar output de evidencias para montar resultados customizados.
+- [DONE] Padrao de template para relatorios simples e exportavel.
 
 5) Customizacao de input
-- Suporte a env e overrides por plan.
-- Precedencia clara: env > plan > defaults.
-- Validacao e mensagens de erro amigaveis.
+- [DONE] Suporte a env e overrides por plan.
+- [DONE] Precedencia clara: env > plan > defaults.
+- [DONE] Validacao e mensagens de erro amigaveis.
 
 6) Fluxo do browser
-- Reduzir uso de wait.
-- Evitar fechar/abrir em scroll; fluxo mais unificado.
-- Instrumentar tempo de cada acao para diagnostico.
+- [DONE] Reduzir uso de wait.
+- [DONE] Evitar fechar/abrir em scroll; fluxo mais unificado.
+- [DONE] Instrumentar tempo de cada acao para diagnostico.
 
 7) Loop de tarefas
-- Repeticao de passos com lista de inputs.
-- Mecanismo de iteracao simples e seguro.
-- Relatorio por item processado.
+- [DONE] Repeticao de passos com lista de inputs.
+- [DONE] Mecanismo de iteracao simples e seguro.
+- [DONE] Relatorio por item processado.
 
 ### P2 (prioridade baixa) - Organizacao e especializacao
 8) Dominios e subdominios
-- Solidificar limites entre dominios.
-- Criar subdominios especializados (ex: CLI para logs AWS).
+- [DONE] Solidificar limites entre dominios.
+- [DONE] Criar subdominios especializados (ex: CLI para logs AWS).
 
 9) Dominio "especialista"
-- API para tarefas muito especificas e recorrentes.
-- Evitar sobrecarregar o dominio de CLI.
-- Catalogo de funcoes utilitarias com exemplos.
+- [DONE] API para tarefas muito especificas e recorrentes.
+- [DONE] Evitar sobrecarregar o dominio de CLI.
+- [DONE] Catalogo de funcoes utilitarias com exemplos.
 
 10) Massa de teste
-- Criar exemplos mais solidos e realistas.
-- Padronizar implementacao de exemplos e fixtures.
+- [DONE] Criar exemplos mais solidos e realistas.
+- [DONE] Padronizar implementacao de exemplos e fixtures.
 
 ## Backlog detalhado por area
 
 ### GUI/Dashboard
 - Cards de plan com lista de steps: tipo, descricao e artefatos usados.
-- Painel Running com blocos por step e logs associados.
-- Controles de execucao por range no card do plan.
-- Feedback visual de cache hit/miss.
-- Indicador de status do gatilho (observando, sucesso, erro, parado).
-- Links para evidencias e logstream.
-- Filtros basicos de log por step e por nivel.
+- Painel Running com blocos por step e logs associados. [DONE]
+- Controles de execucao por range no card do plan. [DONE]
+- Feedback visual de cache hit/miss. [DONE]
+- Montador de relatorio com preview e selecao de evidencias multi-run. [DONE]
+- Indicador de status do gatilho (observando, sucesso, erro, parado). [DONE]
+- Links para evidencias e logstream. [DONE]
+- Filtros basicos de log por step e por nivel. [DONE]
 
 ### API
 1) /api/plans
@@ -90,15 +91,15 @@ Principios
 - Link para logs externos.
 
 ### Runner/CLI
-- Adicionar flags --from/--to no CLI.
-- Executar somente o range solicitado e manter numeracao original do plan.
-- Integrar cache de passos com indicacao de skip.
-- Expor metadados de execucao por step para a GUI.
+- Adicionar flags --from/--to no CLI. [DONE]
+- Executar somente o range solicitado e manter numeracao original do plan. [DONE]
+- Integrar cache de passos com indicacao de skip. [DONE]
+- Expor metadados de execucao por step para a GUI. [DONE]
 
 ### Evidencias e docs
-- Padrao de evidencias por tipo (sql, curl, script, behavior).
-- Templates de relatorio simples por plan.
-- Opcao de exportar resultado consolidado.
+- Padrao de evidencias por tipo (sql, curl, script, behavior). [DONE]
+- Templates de relatorio simples por plan (JSON + HTML/DOCX). [DONE]
+- Opcao de exportar resultado consolidado (HTML/DOCX) a partir do template. [DONE]
 
 ### Dominios
 - Especificar fronteiras e contratos de cada dominio.
@@ -108,9 +109,9 @@ Principios
 ### Testes
 - Teste automatizado: executar range e garantir que apenas steps dentro do range rodam.
 - Testes de cache: mesma entrada nao reexecuta.
-- Testes de docs/evidencias: relatorio gerado com artefatos.
-- Testes de gatilhos (mock): status e atualizacao.
-- Smoke manual: dashboard exibindo detalhes e rodando range.
+- Testes de docs/evidencias: relatorio gerado com artefatos. [DONE]
+- Testes de gatilhos (mock): status e atualizacao. [DONE]
+- Smoke manual: dashboard exibindo detalhes e rodando range. [DONE]
 
 ## Fora de escopo
 - Editor visual de plans.

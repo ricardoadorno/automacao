@@ -11,10 +11,12 @@ Este guia e o ponto de entrada para usuarios do Automacao. Aqui voce encontra o 
 - Cache e reexecucao: `docs/howto/cache.md`
 - Execucao por range ou steps selecionados: `docs/howto/selection.md`
 - Evidencias e artefatos: `docs/howto/evidence.md`
+- Template de relatorio e docx: `docs/howto/report-template.md`
 - Browser behaviors: `docs/howto/browser-behaviors.md`
 - SQL evidence: `docs/howto/sql-evidence.md`
 - Criar plans do zero: `docs/howto/create-plans.md`
 - Dashboard (frontend React): `docs/howto/dashboard.md`
+- Specialist: `docs/howto/specialist.md`
 - LLM: criar scenarios: `docs/howto/llm-scenarios.md`
 - Triggers: `docs/howto/triggers.md`
 - Problemas comuns: `docs/howto/troubleshooting.md`
@@ -22,7 +24,7 @@ Este guia e o ponto de entrada para usuarios do Automacao. Aqui voce encontra o 
 ## Conceitos rapidos
 
 - Plan: arquivo JSON declarativo com `metadata`, `steps` e configuracoes globais.
-- Step: unidade de execucao. Pode ser `api`, `sqlEvidence`, `browser`, `cli` ou `specialist`.
+- Step: unidade de execucao. Pode ser `api`, `sqlEvidence`, `browser`, `cli`, `specialist` ou `logstream`.
 - Run: cada execucao gera uma pasta em `runs/` com artefatos e `00_runSummary.json`.
 - Context: dados compartilhados entre steps para exportar e reutilizar valores.
 
@@ -36,6 +38,7 @@ Escolher plan -> Rodar (CLI ou Dashboard) -> Ver logs -> Abrir evidencias -> Aju
 
 - CLI: ideal para automacao em batch, scripts e debug rapido.
 - Dashboard: ideal para explorar planos, selecionar steps e acompanhar execucao.
+- Dashboard tambem permite montar relatorios e remover runs antigas.
 
 ## Onde ficam os resultados
 

@@ -1,6 +1,6 @@
 import { Context } from "./context";
 
-export type StepType = "browser" | "api" | "sqlEvidence" | "cli" | "specialist";
+export type StepType = "browser" | "api" | "sqlEvidence" | "cli" | "specialist" | "logstream";
 
 export type ExportRule =
   | {
@@ -37,6 +37,7 @@ export interface StepConfig {
         overlapPx?: number;
         maxTiles?: number;
         waitMs?: number;
+        waitForNetworkIdle?: boolean;
       };
     };
   };
@@ -75,9 +76,14 @@ export interface StepConfig {
     };
   };
   specialist?: {
-    task: "writeFile";
+    task: "writeFile" | "appendFile" | "writeJson";
     outputPath: string;
-    content: string;
+    content?: string;
+    data?: unknown;
+  };
+  logstream?: {
+    url: string;
+    title?: string;
   };
 }
 
@@ -139,6 +145,7 @@ export interface StepResult {
   status: "OK" | "FAIL" | "SKIPPED";
   startedAt: string;
   finishedAt: string;
+  durationMs: number;
   inputs: unknown;
   outputs: Record<string, unknown>;
   notes?: string;

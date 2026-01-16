@@ -34,6 +34,10 @@ Este diretorio guarda planos de exemplo usados para demonstracao e testes locais
 - O que faz: consulta SQLite e gera evidencias.
 - Preparar: `node examples/sqlite-basic/init-db.js`
 
+### sqlite-jsonplaceholder
+- Caminho: `examples/sqlite-jsonplaceholder/plan.json`
+- O que faz: consulta SQLite com dados inspirados no JSONPlaceholder (offline).
+
 ### cli-basic
 - Caminho: `examples/cli-basic/plan.json`
 - O que faz: executa um comando node simples.
@@ -41,6 +45,14 @@ Este diretorio guarda planos de exemplo usados para demonstracao e testes locais
 ### specialist-basic
 - Caminho: `examples/specialist-basic/plan.json`
 - O que faz: gera um arquivo via specialist.
+
+### specialist-advanced
+- Caminho: `examples/specialist-advanced/plan.json`
+- O que faz: demonstra writeFile/appendFile/writeJson.
+
+### logstream-basic
+- Caminho: `examples/logstream-basic/plan.json`
+- O que faz: registra link de logstream como evidencia.
 
 ### cache-basic
 - Caminho: `examples/cache-basic/plan.json`

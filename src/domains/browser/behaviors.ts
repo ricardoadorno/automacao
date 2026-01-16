@@ -6,6 +6,8 @@ export type BehaviorAction =
   | { type: "click"; selector: string }
   | { type: "fill"; selector: string; text: string }
   | { type: "waitForSelector"; selector: string; state?: "attached" | "detached" | "visible" | "hidden" }
+  | { type: "waitForRequest"; url?: string; urlRegex?: string; timeoutMs?: number }
+  | { type: "waitForResponse"; url?: string; urlRegex?: string; status?: number; timeoutMs?: number }
   | { type: "waitForTimeout"; ms: number }
   | { type: "waitForLoadState"; state?: "load" | "domcontentloaded" | "networkidle" }
   | { type: "scrollTo"; x?: number; y?: number }

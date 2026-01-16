@@ -9,6 +9,7 @@ const PORT = 3101;
 const HOST = "localhost";
 const BASE_URL = `http://${HOST}:${PORT}`;
 const TRIGGERS_PATH = path.join(process.cwd(), "runs", "triggers.json");
+const REPORT_RUN_IDS = ["e2e-report-1", "e2e-report-2"];
 
 async function waitForServerReady(timeoutMs = 15000): Promise<void> {
   const start = Date.now();
@@ -26,6 +27,34 @@ async function waitForServerReady(timeoutMs = 15000): Promise<void> {
   throw new Error("Dashboard server did not become ready in time");
 }
 
+async function createRun(runId: string, stepId: string, evidenceHtml: string) {
+  const runDir = path.join(process.cwd(), "runs", runId);
+  const stepDir = path.join(runDir, "steps", `01_${stepId}`);
+  await fs.mkdir(stepDir, { recursive: true });
+  await fs.writeFile(path.join(stepDir, "evidence.html"), evidenceHtml, "utf-8");
+  const summary = {
+    runId,
+    startedAt: new Date().toISOString(),
+    finishedAt: new Date().toISOString(),
+    steps: [
+      {
+        id: stepId,
+        type: "api",
+        status: "OK",
+        outputs: {
+          stepDir: `steps/01_${stepId}`,
+          evidence: "evidence.html"
+        }
+      }
+    ]
+  };
+  await fs.writeFile(
+    path.join(runDir, "00_runSummary.json"),
+    JSON.stringify(summary, null, 2),
+    "utf-8"
+  );
+}
+
 describe("P2 dashboard e2e", () => {
   let server: ReturnType<typeof spawn> | null = null;
 
@@ -36,6 +65,8 @@ describe("P2 dashboard e2e", () => {
     } catch (error) {
       // ignore missing file
     }
+    await createRun(REPORT_RUN_IDS[0], "login-api", "<html><body>Run1 evidence</body></html>");
+    await createRun(REPORT_RUN_IDS[1], "search-api", "<html><body>Run2 evidence</body></html>");
 
     server = spawn(process.execPath, ["scripts/dashboard.js"], {
       cwd: process.cwd(),
@@ -54,6 +85,13 @@ describe("P2 dashboard e2e", () => {
       await fs.unlink(TRIGGERS_PATH);
     } catch (error) {
       // ignore missing file
+    }
+    for (const runId of REPORT_RUN_IDS) {
+      try {
+        await fs.rm(path.join(process.cwd(), "runs", runId), { recursive: true, force: true });
+      } catch (error) {
+        // ignore cleanup failure
+      }
     }
   });
 
@@ -85,6 +123,38 @@ describe("P2 dashboard e2e", () => {
       await page.waitForSelector('[data-testid="trigger-card"]');
       const triggerText = await page.locator('[data-testid="trigger-card"]').first().innerText();
       expect(triggerText).toContain("Dashboard E2E");
+
+      await browser.close();
+    },
+    { timeout: 60000 }
+  );
+
+  it(
+    "builds report with evidence from multiple runs",
+    async () => {
+      const browser = await chromium.launch({ headless: true });
+      const page = await browser.newPage();
+
+      await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
+      await page.click('[data-testid="tab-reports"]');
+      await page.waitForSelector(".report-builder");
+
+      await page.click("text=Add H1");
+      await page.fill('textarea[placeholder="Write text..."]', "Relatorio E2E");
+
+      await page.click("text=Add evidence");
+      await page.click("text=Choose evidence");
+
+      await page.waitForSelector(".report-evidence-modal");
+      await page.selectOption(
+        "select[data-testid='report-modal-evidence']",
+        `${REPORT_RUN_IDS[1]}::search-api::evidence.html`
+      );
+      await page.click("[data-testid='report-modal-confirm']");
+
+      await page.waitForSelector(".report-preview-body iframe");
+      const previewText = await page.locator(".report-preview-body").innerText();
+      expect(previewText).toContain("Relatorio E2E");
 
       await browser.close();
     },

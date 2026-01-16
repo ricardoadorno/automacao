@@ -1,5 +1,5 @@
 import path from "path";
-import { runActions } from "./actions";
+import { ActionTiming, runActions } from "./actions";
 import { BehaviorAction } from "./behaviors";
 import { captureScreenshots } from "./capture";
 import { BrowserOptions, BrowserSession, closeSession, createSession } from "./session";
@@ -10,6 +10,7 @@ export interface BrowserStepResult {
   screenshotPath: string;
   screenshotPaths: string[];
   attempts: number;
+  actionTimings: ActionTiming[];
 }
 
 export async function executeBrowserStep(
@@ -35,7 +36,7 @@ export async function executeBrowserStep(
         await applyZoom(session.page, step.config.browser.zoom);
       }
 
-      await runActions(session.page, actions);
+      const actionTimings = await runActions(session.page, actions);
 
       const screenshotPaths = await captureScreenshots(
         session.page,
@@ -45,7 +46,7 @@ export async function executeBrowserStep(
       const screenshotPath = screenshotPaths[0] ?? path.join(stepDir, "screenshot.png");
 
       await closeSession(session);
-  return { screenshotPath, screenshotPaths, attempts: attempt + 1 };
+      return { screenshotPath, screenshotPaths, attempts: attempt + 1, actionTimings };
     } catch (error) {
       lastError = error;
       await closeSession(session);
@@ -77,7 +78,7 @@ export async function executeBrowserStepWithSession(
         await applyZoom(session.page, step.config.browser.zoom);
       }
 
-      await runActions(session.page, actions);
+      const actionTimings = await runActions(session.page, actions);
 
       const screenshotPaths = await captureScreenshots(
         session.page,
@@ -86,7 +87,7 @@ export async function executeBrowserStepWithSession(
       );
       const screenshotPath = screenshotPaths[0] ?? path.join(stepDir, "screenshot.png");
 
-      return { screenshotPath, screenshotPaths, attempts: attempt + 1 };
+      return { screenshotPath, screenshotPaths, attempts: attempt + 1, actionTimings };
     } catch (error) {
       lastError = error;
       if (attempt < retries) {

@@ -16,6 +16,7 @@ Use este guia para localizar evidencias e entender o que cada step gera.
 - Browser: `screenshot.png`
 - CLI: `stdout.txt`, `stderr.txt`, `metadata.json`, `evidence.html`
 - Specialist: arquivo gerado pelo step
+- Logstream: `evidence.html`
 
 ## Como abrir
 

@@ -2,10 +2,22 @@ import { Page } from "playwright";
 import { BehaviorAction } from "./behaviors";
 import { applyViewport, applyZoom, scrollBy, scrollTo } from "./viewport";
 
-export async function runActions(page: Page, actions: BehaviorAction[]): Promise<void> {
+export type ActionTiming = {
+  type: BehaviorAction["type"];
+  durationMs: number;
+};
+
+export async function runActions(
+  page: Page,
+  actions: BehaviorAction[]
+): Promise<ActionTiming[]> {
+  const timings: ActionTiming[] = [];
   for (const action of actions) {
+    const start = Date.now();
     await runAction(page, action);
+    timings.push({ type: action.type, durationMs: Date.now() - start });
   }
+  return timings;
 }
 
 async function runAction(page: Page, action: BehaviorAction): Promise<void> {
@@ -22,6 +34,30 @@ async function runAction(page: Page, action: BehaviorAction): Promise<void> {
     case "waitForSelector":
       await page.waitForSelector(action.selector, { state: action.state });
       return;
+    case "waitForRequest": {
+      const predicate = buildUrlPredicate(action.url, action.urlRegex);
+      await page.waitForRequest(
+        (request) => predicate(request.url()),
+        { timeout: action.timeoutMs ?? 30000 }
+      );
+      return;
+    }
+    case "waitForResponse": {
+      const predicate = buildUrlPredicate(action.url, action.urlRegex);
+      await page.waitForResponse(
+        (response) => {
+          if (!predicate(response.url())) {
+            return false;
+          }
+          if (typeof action.status === "number") {
+            return response.status() === action.status;
+          }
+          return true;
+        },
+        { timeout: action.timeoutMs ?? 30000 }
+      );
+      return;
+    }
     case "waitForTimeout":
       await page.waitForTimeout(action.ms);
       return;
@@ -92,4 +128,15 @@ async function runAction(page: Page, action: BehaviorAction): Promise<void> {
       throw new Error(`Unsupported action: ${JSON.stringify(_exhaustive)}`);
     }
   }
+}
+
+function buildUrlPredicate(url?: string, urlRegex?: string) {
+  if (!url && !urlRegex) {
+    throw new Error("waitForRequest/Response requires url or urlRegex");
+  }
+  if (urlRegex) {
+    const regex = new RegExp(urlRegex);
+    return (target: string) => regex.test(target);
+  }
+  return (target: string) => target.includes(url ?? "");
 }

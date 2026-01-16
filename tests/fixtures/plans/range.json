@@ -1,0 +1,8 @@
+{
+  "metadata": { "feature": "range" },
+  "steps": [
+    { "id": "step-1", "type": "api" },
+    { "id": "step-2", "type": "sqlEvidence", "config": { "sql": { "query": "select 1" } } },
+    { "id": "step-3", "type": "cli", "config": { "cli": { "command": "node", "args": ["-e", "console.log('ok')"] } } }
+  ]
+}

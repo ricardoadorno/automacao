@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "feature": "Logstream evidence",
+    "env": "local"
+  },
+  "steps": [
+    {
+      "id": "logs",
+      "type": "logstream",
+      "description": "Registra link do logstream",
+      "config": {
+        "logstream": {
+          "title": "AWS logs",
+          "url": "https://logs.example.com/stream/123"
+        }
+      }
+    }
+  ]
+}

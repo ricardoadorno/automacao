@@ -12,6 +12,7 @@ This document describes domain boundaries and responsibilities.
 - `browser`: Runs Playwright behaviors and captures screenshots.
 - `cli`: Executes local commands and captures stdout/stderr.
 - `specialist`: Handles small, recurring tasks that are not CLI or API.
+- `logstream`: Registers external logstream links as evidence artifacts.
 
 ## subdomains (guideline)
 - Prefer new subfolders under a domain for specialized variants.

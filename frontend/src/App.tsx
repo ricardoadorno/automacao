@@ -11,12 +11,15 @@ import {
   Plan,
   PlanInputs,
   PlanStep,
+  ReportBlock,
+  ReportDocument,
   Range,
+  RunDetails,
   RunSummary,
   Trigger
 } from "./types";
 
-type TabKey = "plans" | "examples" | "executions" | "runs" | "triggers";
+type TabKey = "plans" | "examples" | "executions" | "runs" | "reports" | "triggers";
 
 type Toast = { message: string; tone?: "success" | "error" | "info" } | null;
 
@@ -40,6 +43,7 @@ export default function App() {
   const [planFilter, setPlanFilter] = useState("");
   const [exampleFilter, setExampleFilter] = useState("");
   const [stepSelections, setStepSelections] = useState<Record<string, Record<number, boolean>>>({});
+  const [rangeDrafts, setRangeDrafts] = useState<Record<string, { from?: string; to?: string }>>({});
   const [inputsDrafts, setInputsDrafts] = useState<Record<string, InputsDraft>>({});
   const [selectedPlanPath, setSelectedPlanPath] = useState<string | null>(null);
   const [executions, setExecutions] = useState<Record<string, Execution>>({});
@@ -50,6 +54,23 @@ export default function App() {
   const [runsLoading, setRunsLoading] = useState(false);
   const [triggers, setTriggers] = useState<Trigger[]>([]);
   const [triggersLoading, setTriggersLoading] = useState(false);
+  const [reportRuns, setReportRuns] = useState<RunSummary[]>([]);
+  const [reportRunsLoading, setReportRunsLoading] = useState(false);
+  const [reportRunId, setReportRunId] = useState("");
+  const [reportDetails, setReportDetails] = useState<RunDetails | null>(null);
+  const [reportDetailsByRun, setReportDetailsByRun] = useState<Record<string, RunDetails>>({});
+  const [reportName, setReportName] = useState("relatorio");
+  const [reportBlocks, setReportBlocks] = useState<ReportBlock[]>([]);
+  const [reportLinks, setReportLinks] = useState<{ jsonUrl?: string; htmlUrl?: string; docxUrl?: string } | null>(null);
+  const [evidencePicker, setEvidencePicker] = useState<{
+    open: boolean;
+    blockId?: string;
+    runId?: string;
+    stepId?: string;
+    filename?: string;
+  }>({ open: false });
+  const [evidenceSearch, setEvidenceSearch] = useState("");
+  const [logFilters, setLogFilters] = useState<Record<string, { text: string; level: "all" | "error" }>>({});
   const [triggerForm, setTriggerForm] = useState({
     name: "",
     provider: "eventbridge",
@@ -57,6 +78,7 @@ export default function App() {
     logsUrl: ""
   });
   const pollersRef = useRef<Record<string, number>>({});
+  const triggersPollerRef = useRef<number | null>(null);
 
   const hasExecutions = useMemo(() => Object.keys(executions).length > 0, [executions]);
 
@@ -70,6 +92,9 @@ export default function App() {
     if (tab === "runs") {
       void loadRuns(runsPage, runsPageSize);
     }
+    if (tab === "reports") {
+      void loadReportRuns();
+    }
     if (tab === "triggers") {
       void loadTriggers();
     }
@@ -79,8 +104,33 @@ export default function App() {
     return () => {
       Object.values(pollersRef.current).forEach((id) => clearInterval(id));
       pollersRef.current = {};
+      if (triggersPollerRef.current) {
+        clearInterval(triggersPollerRef.current);
+        triggersPollerRef.current = null;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (tab === "triggers") {
+      if (!triggersPollerRef.current) {
+        triggersPollerRef.current = window.setInterval(() => {
+          void loadTriggers();
+        }, 2500);
+      }
+      return () => {
+        if (triggersPollerRef.current) {
+          clearInterval(triggersPollerRef.current);
+          triggersPollerRef.current = null;
+        }
+      };
+    }
+    if (triggersPollerRef.current) {
+      clearInterval(triggersPollerRef.current);
+      triggersPollerRef.current = null;
+    }
+    return;
+  }, [tab]);
 
   useEffect(() => {
     const handler = () => {
@@ -130,6 +180,15 @@ export default function App() {
       }
       return next;
     });
+    setRangeDrafts((current) => {
+      const next = { ...current };
+      for (const plan of allPlans) {
+        if (!next[plan.path]) {
+          next[plan.path] = { from: "", to: "" };
+        }
+      }
+      return next;
+    });
 
     if (!selectedPlanPath && plans.length > 0) {
       const planFromHash = getPlanFromHash();
@@ -157,6 +216,15 @@ export default function App() {
       // ignore
     }
   }, [inputsDrafts]);
+
+  useEffect(() => {
+    if (!reportRunId) {
+      setReportDetails(null);
+      return;
+    }
+    void loadRunDetails(reportRunId, { setActive: true });
+    setReportLinks(null);
+  }, [reportRunId]);
 
   async function loadPlans() {
     setPlansLoading(true);
@@ -264,6 +332,34 @@ export default function App() {
     }
   }
 
+  async function loadReportRuns() {
+    setReportRunsLoading(true);
+    try {
+      const data = await apiFetch<{ runs: RunSummary[] }>(`/api/runs?page=1&pageSize=20`);
+      const nextRuns = data.runs ?? [];
+      setReportRuns(nextRuns);
+      if (!reportRunId && nextRuns.length > 0) {
+        setReportRunId(nextRuns[0].runId);
+      }
+    } catch (error) {
+      showToast(error);
+    } finally {
+      setReportRunsLoading(false);
+    }
+  }
+
+  async function loadRunDetails(runId: string, options: { setActive?: boolean } = {}) {
+    try {
+      const data = await apiFetch<RunDetails>(`/api/run-details?runId=${encodeURIComponent(runId)}`);
+      setReportDetailsByRun((current) => ({ ...current, [runId]: data }));
+      if (options.setActive) {
+        setReportDetails(data);
+      }
+    } catch (error) {
+      showToast(error);
+    }
+  }
+
   async function loadTriggers() {
     setTriggersLoading(true);
     try {
@@ -314,6 +410,41 @@ export default function App() {
     }
   }
 
+  async function deleteRun(runId: string) {
+    if (!window.confirm("Remove this run and all its artifacts?")) {
+      return;
+    }
+    try {
+      await apiFetch(`/api/runs?runId=${encodeURIComponent(runId)}`, { method: "DELETE" });
+      if (runs.length <= 1 && runsPage > 1) {
+        setRunsPage(runsPage - 1);
+      } else {
+        void loadRuns(runsPage, runsPageSize);
+      }
+      if (reportRunId === runId) {
+        setReportRunId("");
+        setReportDetails(null);
+      }
+      setReportRuns((current) => current.filter((item) => item.runId !== runId));
+      showToast({ message: "Run removed", tone: "success" });
+    } catch (error) {
+      showToast(error);
+    }
+  }
+
+  async function stopExecution(executionId: string) {
+    try {
+      const data = await apiFetch<{ status?: string }>(`/api/stop?id=${encodeURIComponent(executionId)}`);
+      setExecutions((current) => ({
+        ...current,
+        [executionId]: { ...current[executionId], status: data.status || "stopped" }
+      }));
+      showToast({ message: "Execution stopped", tone: "success" });
+    } catch (error) {
+      showToast(error);
+    }
+  }
+
   function showToast(value: unknown) {
     if (!value) return;
     if (value instanceof Error) {
@@ -330,6 +461,130 @@ export default function App() {
       return;
     }
     setToast({ message: "Done", tone: "info" });
+  }
+
+  function addReportBlock(type: ReportBlock["type"]) {
+    const id = `block-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const base: ReportBlock = { id, type, enabled: true };
+    if (type === "h1" || type === "h2" || type === "p" || type === "small") {
+      base.text = "";
+    }
+    if (type === "evidence") {
+      base.label = "Evidence";
+      base.caption = "";
+      base.runId = reportRunId || "";
+    }
+    setReportBlocks((current) => [...current, base]);
+  }
+
+  function updateReportBlock(id: string, patch: Partial<ReportBlock>) {
+    setReportBlocks((current) =>
+      current.map((block) => (block.id === id ? { ...block, ...patch } : block))
+    );
+  }
+
+  function moveReportBlock(id: string, direction: -1 | 1) {
+    setReportBlocks((current) => {
+      const index = current.findIndex((block) => block.id === id);
+      if (index === -1) return current;
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.length) return current;
+      const updated = [...current];
+      const [item] = updated.splice(index, 1);
+      updated.splice(nextIndex, 0, item);
+      return updated;
+    });
+  }
+
+  function removeReportBlock(id: string) {
+    setReportBlocks((current) => current.filter((block) => block.id !== id));
+  }
+
+  function buildReportDocument(): ReportDocument {
+    return {
+      name: reportName.trim() || "relatorio",
+      runId: reportRunId,
+      blocks: reportBlocks
+    };
+  }
+
+  function getReportBaseRunId(blocks: ReportBlock[]) {
+    if (reportRunId) {
+      return reportRunId;
+    }
+    const firstEvidence = blocks.find((block) => block.type === "evidence" && block.runId);
+    return firstEvidence?.runId ?? "";
+  }
+
+  async function generateReport() {
+    const report = buildReportDocument();
+    const baseRunId = getReportBaseRunId(report.blocks);
+    if (!baseRunId) {
+      showToast("Select an evidence before generating");
+      return;
+    }
+    try {
+      const data = await apiFetch<{ jsonUrl?: string; htmlUrl?: string; docxUrl?: string }>(
+        "/api/reports/generate",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            runId: baseRunId,
+            name: reportName,
+            report
+          })
+        }
+      );
+      setReportLinks(data);
+      showToast({ message: "Report generated", tone: "success" });
+    } catch (error) {
+      showToast(error);
+    }
+  }
+
+
+  function openEvidencePicker(blockId: string) {
+    const block = reportBlocks.find((item) => item.id === blockId);
+    if (!block) {
+      return;
+    }
+    const runId = block.runId || reportRunId || "";
+    setEvidencePicker({
+      open: true,
+      blockId,
+      runId,
+      stepId: block.stepId,
+      filename: block.filename
+    });
+    setEvidenceSearch("");
+    for (const run of reportRuns) {
+      if (!reportDetailsByRun[run.runId]) {
+        void loadRunDetails(run.runId);
+      }
+    }
+  }
+
+  function closeEvidencePicker() {
+    setEvidencePicker({ open: false });
+  }
+
+  function confirmEvidencePicker() {
+    if (!evidencePicker.blockId) {
+      closeEvidencePicker();
+      return;
+    }
+    const step = getRunStep(
+      getRunDetails(reportDetailsByRun, evidencePicker.runId),
+      evidencePicker.stepId
+    );
+    updateReportBlock(evidencePicker.blockId, {
+      runId: evidencePicker.runId,
+      stepId: evidencePicker.stepId,
+      filename: evidencePicker.filename,
+      stepDir: step?.stepDir || ""
+    });
+    closeEvidencePicker();
   }
 
   function toggleStepSelection(planPath: string, stepIndex: number) {
@@ -376,13 +631,45 @@ export default function App() {
     }));
   }
 
+  function updateRangeDraft(planPath: string, patch: { from?: string; to?: string }) {
+    setRangeDrafts((current) => ({
+      ...current,
+      [planPath]: { ...(current[planPath] ?? {}), ...patch }
+    }));
+  }
+
+  function parseRangeDraft(planPath: string, stepsCount: number) {
+    const draft = rangeDrafts[planPath] || {};
+    const fromRaw = draft.from?.trim();
+    const toRaw = draft.to?.trim();
+    const from = fromRaw ? Number.parseInt(fromRaw, 10) : undefined;
+    const to = toRaw ? Number.parseInt(toRaw, 10) : undefined;
+    if ((fromRaw && !Number.isFinite(from)) || (toRaw && !Number.isFinite(to))) {
+      return { error: "Range must be numeric" };
+    }
+    if (from !== undefined && (from < 1 || from > stepsCount)) {
+      return { error: "Range start out of bounds" };
+    }
+    if (to !== undefined && (to < 1 || to > stepsCount)) {
+      return { error: "Range end out of bounds" };
+    }
+    if (from !== undefined && to !== undefined && from > to) {
+      return { error: "Range start must be <= end" };
+    }
+    return { range: { fromStep: from, toStep: to } as Range };
+  }
+
   function buildInputsPayload(planPath: string) {
     const draft = inputsDrafts[planPath];
     if (!draft) return { inputs: undefined, errors: [] as string[] };
+    const rowErrors = [
+      ...validateInputRows(draft.defaultsRows, "Defaults"),
+      ...validateInputRows(draft.overridesRows, "Overrides")
+    ];
     const defaults = rowsToObject(draft.defaultsRows);
     const overrides = rowsToObject(draft.overridesRows);
     const items = parseItemsRows(draft.itemsRows);
-    const errors = items.errors;
+    const errors = [...rowErrors, ...items.errors];
     const inputs: PlanInputs = {};
     if (Object.keys(defaults).length > 0) inputs.defaults = defaults;
     if (Object.keys(overrides).length > 0) inputs.overrides = overrides;
@@ -426,13 +713,14 @@ export default function App() {
           <button className="ghost" onClick={() => setTab("examples")}>Examples</button>
           <button className="ghost" onClick={() => setTab("executions")}>Executions</button>
           <button className="ghost" onClick={() => setTab("runs")}>Runs</button>
+          <button className="ghost" onClick={() => setTab("reports")}>Reports</button>
           <button className="ghost" onClick={() => setTab("triggers")}>Triggers</button>
         </div>
       </header>
 
       <main className="content">
         <nav className="tabs">
-          {["plans", "examples", "executions", "runs", "triggers"].map((key) => (
+          {["plans", "examples", "executions", "runs", "reports", "triggers"].map((key) => (
             <button
               key={key}
               className={`tab ${tab === key ? "active" : ""}`}
@@ -476,6 +764,7 @@ export default function App() {
                       plan.steps.length > 0 && selectedSteps.length === plan.steps.length;
                     const typeCounts = getStepTypeCounts(plan.steps);
                     const flags = getPlanFlags(plan);
+                    const rangeDraft = rangeDrafts[plan.path] || { from: "", to: "" };
                     return (
                       <article
                         className={`card plan-card ${selectedSteps.length > 0 ? "selected" : ""}`}
@@ -547,6 +836,43 @@ export default function App() {
                             </div>
                           </div>
                         )}
+                        <div className="range">
+                          <label>
+                            From
+                            <input
+                              value={rangeDraft.from ?? ""}
+                              onChange={(event) => updateRangeDraft(plan.path, { from: event.target.value })}
+                              placeholder="1"
+                            />
+                          </label>
+                          <label>
+                            To
+                            <input
+                              value={rangeDraft.to ?? ""}
+                              onChange={(event) => updateRangeDraft(plan.path, { to: event.target.value })}
+                              placeholder={String(plan.steps.length)}
+                            />
+                          </label>
+                          <button
+                            className="ghost"
+                            onClick={() => {
+                              const parsed = parseRangeDraft(plan.path, plan.steps.length);
+                              if (parsed.error) {
+                                showToast(parsed.error);
+                                return;
+                              }
+                              const payload = buildInputsPayload(plan.path);
+                              if (payload.errors.length > 0) {
+                                updateInputsDraft(plan.path, { errors: payload.errors });
+                                showToast(payload.errors.join("; "));
+                                return;
+                              }
+                              void runPlan(plan.path, parsed.range, { inputs: payload.inputs });
+                            }}
+                          >
+                            Run range
+                          </button>
+                        </div>
                         <div className="actions">
                           <button className="ghost" onClick={() => selectPlan(plan.path)}>
                             View plan
@@ -645,6 +971,7 @@ export default function App() {
                 {filteredExamples.map((plan) => {
                   const selectedSteps = getSelectedSteps(plan.path);
                   const typeCounts = getStepTypeCounts(plan.steps);
+                  const rangeDraft = rangeDrafts[plan.path] || { from: "", to: "" };
                   return (
                     <article className="card plan-card" data-testid="plan-card" key={plan.path}>
                       <div className="plan-top">
@@ -663,6 +990,43 @@ export default function App() {
                         {typeCounts.length > 0 && (
                           <span>Types: {typeCounts.map((item) => `${item.type} ${item.count}`).join(", ")}</span>
                         )}
+                      </div>
+                      <div className="range">
+                        <label>
+                          From
+                          <input
+                            value={rangeDraft.from ?? ""}
+                            onChange={(event) => updateRangeDraft(plan.path, { from: event.target.value })}
+                            placeholder="1"
+                          />
+                        </label>
+                        <label>
+                          To
+                          <input
+                            value={rangeDraft.to ?? ""}
+                            onChange={(event) => updateRangeDraft(plan.path, { to: event.target.value })}
+                            placeholder={String(plan.steps.length)}
+                          />
+                        </label>
+                        <button
+                          className="ghost"
+                          onClick={() => {
+                            const parsed = parseRangeDraft(plan.path, plan.steps.length);
+                            if (parsed.error) {
+                              showToast(parsed.error);
+                              return;
+                            }
+                            const payload = buildInputsPayload(plan.path);
+                            if (payload.errors.length > 0) {
+                              updateInputsDraft(plan.path, { errors: payload.errors });
+                              showToast(payload.errors.join("; "));
+                              return;
+                            }
+                            void runPlan(plan.path, parsed.range, { inputs: payload.inputs });
+                          }}
+                        >
+                          Run range
+                        </button>
                       </div>
                       <div className="actions">
                         <button className="ghost" onClick={() => selectPlan(plan.path)}>
@@ -759,9 +1123,52 @@ export default function App() {
                         <span>Selected: {execution.selectedSteps.join(", ")}</span>
                       )}
                     </div>
+                    <div className="log-filters">
+                      <input
+                        placeholder="Filter logs..."
+                        value={logFilters[execution.executionId]?.text ?? ""}
+                        onChange={(event) =>
+                          setLogFilters((current) => ({
+                            ...current,
+                            [execution.executionId]: {
+                              level: current[execution.executionId]?.level ?? "all",
+                              text: event.target.value
+                            }
+                          }))
+                        }
+                      />
+                      <select
+                        value={logFilters[execution.executionId]?.level ?? "all"}
+                        onChange={(event) =>
+                          setLogFilters((current) => ({
+                            ...current,
+                            [execution.executionId]: {
+                              text: current[execution.executionId]?.text ?? "",
+                              level: event.target.value as "all" | "error"
+                            }
+                          }))
+                        }
+                      >
+                        <option value="all">All</option>
+                        <option value="error">Errors</option>
+                      </select>
+                    </div>
+                    <div className="actions">
+                      <button
+                        className="danger"
+                        onClick={() => stopExecution(execution.executionId)}
+                        disabled={execution.status !== "running"}
+                      >
+                        Stop
+                      </button>
+                    </div>
                     {execution.output && execution.output.length > 0 && (
                       <div className="output-groups">
-                        {renderExecutionOutput(execution.output)}
+                        {renderExecutionOutput(
+                          execution.output,
+                          logFilters[execution.executionId]?.text ?? "",
+                          logFilters[execution.executionId]?.level ?? "all"
+                        )}
                       </div>
                     )}
                   </article>
@@ -817,13 +1224,13 @@ export default function App() {
                         <span>Selected steps: {run.selectedSteps.join(", ")}</span>
                       </div>
                     )}
-                    <div className="actions">
-                      <a className="ghost" href={`/runs/${run.runId}/index.html`}>
-                        Open
-                      </a>
-                      {run.planPath && (
-                        <button
-                          className="primary"
+                      <div className="actions">
+                        <a className="ghost" href={`/runs/${run.runId}/index.html`}>
+                          Open
+                        </a>
+                        {run.planPath && (
+                          <button
+                            className="primary"
                           onClick={() =>
                             runPlan(
                               run.planPath || "",
@@ -835,16 +1242,19 @@ export default function App() {
                                 selectedSteps: run.selectedSteps || undefined
                               }
                             )
-                          }
-                        >
-                          Run again
+                            }
+                          >
+                            Run again
+                          </button>
+                        )}
+                        <button className="danger" onClick={() => deleteRun(run.runId)}>
+                          Delete
                         </button>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             <div className="pagination">
               <button
                 className="ghost"
@@ -861,6 +1271,195 @@ export default function App() {
               >
                 Next
               </button>
+            </div>
+          </section>
+        )}
+
+        {tab === "reports" && (
+          <section className="section">
+            <div className="section-title">
+              <div>
+                <h2>Reports</h2>
+                <p>Monte um documento com evidencias selecionadas.</p>
+              </div>
+              <button className="primary" onClick={() => loadReportRuns()} disabled={reportRunsLoading}>
+                {reportRunsLoading ? "Loading..." : "Refresh runs"}
+              </button>
+            </div>
+            <div className="report-builder">
+              <div className="card report-panel">
+                <div className="report-controls">
+                  <label>
+                    Report name
+                    <input
+                      value={reportName}
+                      onChange={(event) => setReportName(event.target.value)}
+                      placeholder="relatorio"
+                    />
+                  </label>
+                  <div className="report-inline-actions">
+                    <button
+                      className="ghost"
+                      onClick={() => reportRunId && loadRunDetails(reportRunId)}
+                      disabled={!reportRunId}
+                    >
+                      Reload run
+                    </button>
+                    <button className="primary" onClick={generateReport} disabled={!reportRunId}>
+                      Generate docx
+                    </button>
+                  </div>
+                </div>
+                <div className="report-actions">
+                  <button className="ghost" onClick={() => addReportBlock("h1")}>Add H1</button>
+                  <button className="ghost" onClick={() => addReportBlock("h2")}>Add H2</button>
+                  <button className="ghost" onClick={() => addReportBlock("p")}>Add P</button>
+                  <button className="ghost" onClick={() => addReportBlock("small")}>Add Small</button>
+                  <button className="ghost" onClick={() => addReportBlock("evidence")}>Add evidence</button>
+                </div>
+                {reportLinks && (
+                  <div className="report-links">
+                    {reportLinks.docxUrl && (
+                      <a className="ghost" href={reportLinks.docxUrl}>Download docx</a>
+                    )}
+                    {reportLinks.htmlUrl && (
+                      <a className="ghost" href={reportLinks.htmlUrl} target="_blank" rel="noreferrer">
+                        Open HTML
+                      </a>
+                    )}
+                    {reportLinks.jsonUrl && (
+                      <a className="ghost" href={reportLinks.jsonUrl} target="_blank" rel="noreferrer">
+                        Open JSON
+                      </a>
+                    )}
+                  </div>
+                )}
+                {reportBlocks.length === 0 ? (
+                  <div className="empty">Add blocks to start assembling the report.</div>
+                ) : (
+                  <div className="report-blocks">
+                    {reportBlocks.map((block, index) => {
+                      return (
+                        <div className={`report-block ${block.enabled === false ? "disabled" : ""}`} key={block.id}>
+                          <div className="report-block-header">
+                            <div className="report-block-title">
+                              <span className="pill secondary">{block.type}</span>
+                              <span className="muted">#{index + 1}</span>
+                            </div>
+                            <div className="report-block-actions">
+                              <button className="ghost" onClick={() => moveReportBlock(block.id, -1)}>Up</button>
+                              <button className="ghost" onClick={() => moveReportBlock(block.id, 1)}>Down</button>
+                              <button
+                                className="ghost"
+                                onClick={() => updateReportBlock(block.id, { enabled: block.enabled === false })}
+                              >
+                                {block.enabled === false ? "Include" : "Skip"}
+                              </button>
+                              <button className="danger" onClick={() => removeReportBlock(block.id)}>Remove</button>
+                            </div>
+                          </div>
+                          <div className="report-block-body">
+                            {(block.type === "h1" || block.type === "h2" || block.type === "p" || block.type === "small") && (
+                              <textarea
+                                rows={block.type === "p" ? 4 : 2}
+                                placeholder="Write text..."
+                                value={block.text ?? ""}
+                                onChange={(event) => updateReportBlock(block.id, { text: event.target.value })}
+                              />
+                            )}
+                            {block.type === "evidence" && (
+                              <div className="report-evidence-form">
+                                <label>
+                                  Label
+                                  <input
+                                    value={block.label ?? ""}
+                                    onChange={(event) => updateReportBlock(block.id, { label: event.target.value })}
+                                  />
+                                </label>
+                                <label>
+                                  Caption
+                                  <input
+                                    value={block.caption ?? ""}
+                                    onChange={(event) => updateReportBlock(block.id, { caption: event.target.value })}
+                                  />
+                                </label>
+                                <div className="report-evidence-row">
+                                  <div className="report-evidence-summary">
+                                    <span className="muted">
+                                      {block.stepId && block.filename
+                                        ? `${block.runId || reportRunId} / ${block.stepId} → ${block.filename}`
+                                        : "No evidence selected"}
+                                    </span>
+                                  </div>
+                                  <button className="ghost" onClick={() => openEvidencePicker(block.id)}>
+                                    Choose evidence
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="card report-preview">
+                <div className="report-preview-header">
+                  <h3>Preview</h3>
+                  <span className="muted">
+                    {reportRunId ? `Run ${reportRunId}` : "Select a run to load evidences"}
+                  </span>
+                </div>
+            <div className="report-preview-body">
+              {reportBlocks
+                .filter((block) => block.enabled !== false)
+                .map((block) => {
+                  if (block.type === "h1") {
+                    return <h1 key={block.id}>{block.text || "Untitled h1"}</h1>;
+                  }
+                  if (block.type === "h2") {
+                    return <h2 key={block.id}>{block.text || "Untitled h2"}</h2>;
+                  }
+                  if (block.type === "p") {
+                    return <p key={block.id}>{block.text || "..."}</p>;
+                  }
+                  if (block.type === "small") {
+                    return <small key={block.id}>{block.text || "..."}</small>;
+                  }
+                      if (block.type === "evidence") {
+                        const artifact = getRunArtifact(
+                          reportDetailsByRun,
+                          block.runId || reportRunId,
+                          block.stepId,
+                          block.filename
+                        );
+                        return (
+                          <div className="report-evidence" key={block.id}>
+                            <strong>{block.label || "Evidence"}</strong>
+                            {artifact ? (
+                              <>
+                                {artifact.kind === "image" && (
+                                  <img src={artifact.url} alt={artifact.filename} />
+                                )}
+                                {artifact.kind === "html" && (
+                                  <iframe title={artifact.filename} src={artifact.url} />
+                                )}
+                                {artifact.kind === "file" && (
+                                  <span className="muted">{artifact.filename}</span>
+                                )}
+                              </>
+                            ) : (
+                              <p className="muted">No evidence selected.</p>
+                            )}
+                            {block.caption && <p className="muted">{block.caption}</p>}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
+                </div>
+              </div>
             </div>
           </section>
         )}
@@ -957,6 +1556,99 @@ export default function App() {
         <div className={`toast ${toast.tone || "info"}`}>
           <span>{toast.message}</span>
           <button className="ghost" onClick={() => setToast(null)}>Close</button>
+        </div>
+      )}
+
+      {evidencePicker.open && (
+        <div className="modal-backdrop" onClick={closeEvidencePicker}>
+          <div className="modal report-evidence-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Choose evidence</h3>
+              <button className="ghost" onClick={closeEvidencePicker}>Close</button>
+            </div>
+            <div className="report-evidence-modal-body">
+              <div className="report-evidence-selectors">
+                <label>
+                  Evidence
+                  <input
+                    className="report-evidence-search"
+                    placeholder="Search by run, step, filename..."
+                    value={evidenceSearch}
+                    onChange={(event) => setEvidenceSearch(event.target.value)}
+                  />
+                  <select
+                    data-testid="report-modal-evidence"
+                    value={
+                      evidencePicker.runId && evidencePicker.stepId && evidencePicker.filename
+                        ? `${evidencePicker.runId}::${evidencePicker.stepId}::${evidencePicker.filename}`
+                        : ""
+                    }
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (!value) {
+                        setEvidencePicker((current) => ({
+                          ...current,
+                          runId: "",
+                          stepId: "",
+                          filename: ""
+                        }));
+                        return;
+                      }
+                      const [runId, stepId, filename] = value.split("::");
+                      setEvidencePicker((current) => ({
+                        ...current,
+                        runId,
+                        stepId,
+                        filename
+                      }));
+                    }}
+                  >
+                    <option value="">Select evidence</option>
+                    {getEvidenceOptions(reportRuns, reportDetailsByRun, evidenceSearch).map((item) => (
+                      <option key={item.key} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="report-evidence-preview">
+                {(() => {
+                  const artifact = getRunArtifact(
+                    reportDetailsByRun,
+                    evidencePicker.runId,
+                    evidencePicker.stepId,
+                    evidencePicker.filename
+                  );
+                  if (!artifact) {
+                    return <p className="muted">Select a step and evidence to preview.</p>;
+                  }
+                  if (artifact.kind === "image") {
+                    return <img src={artifact.url} alt={artifact.filename} />;
+                  }
+                  if (artifact.kind === "html") {
+                    return <iframe title={artifact.filename} src={artifact.url} />;
+                  }
+                  return (
+                    <a className="ghost" href={artifact.url} target="_blank" rel="noreferrer">
+                      Open {artifact.filename}
+                    </a>
+                  );
+                })()}
+              </div>
+            </div>
+            <div className="report-evidence-modal-actions">
+              <button className="ghost" onClick={closeEvidencePicker}>Cancel</button>
+              <button
+                className="primary"
+                data-testid="report-modal-confirm"
+                onClick={confirmEvidencePicker}
+                disabled={!evidencePicker.filename}
+              >
+                Confirm evidence
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1075,9 +1767,95 @@ function formatStepDetails(step: PlanStep) {
     const parts = [task ? `task: ${task}` : "specialist", outputPath ? `out: ${outputPath}` : ""].filter(Boolean);
     return parts.join(" | ");
   }
+  if (step.type === "logstream") {
+    const url = step.details.url as string | undefined;
+    const title = step.details.title as string | undefined;
+    const parts = [title ? `title: ${title}` : "logstream", url ? `url: ${url}` : ""].filter(Boolean);
+    return parts.join(" | ");
+  }
   return "";
 }
 
+function validateInputRows(rows: Array<{ key: string; value: string }>, label: string) {
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  rows.forEach((row, idx) => {
+    const key = row.key.trim();
+    const value = row.value.trim();
+    if (!key && value) {
+      errors.push(`${label} row ${idx + 1}: key is required`);
+      return;
+    }
+    if (!key) {
+      return;
+    }
+    const normalized = key.toLowerCase();
+    if (seen.has(normalized)) {
+      errors.push(`${label} row ${idx + 1}: duplicate key "${key}"`);
+    }
+    seen.add(normalized);
+  });
+  return errors;
+}
+
+function getRunDetails(detailsMap: Record<string, RunDetails>, runId?: string) {
+  if (!runId) {
+    return null;
+  }
+  return detailsMap[runId] ?? null;
+}
+
+function getRunStep(details: RunDetails | null, stepId?: string) {
+  if (!details || !stepId) {
+    return null;
+  }
+  return details.steps.find((step) => step.id === stepId) ?? null;
+}
+
+function getRunArtifact(
+  detailsMap: Record<string, RunDetails>,
+  runId?: string,
+  stepId?: string,
+  filename?: string
+) {
+  const details = getRunDetails(detailsMap, runId);
+  if (!details || !stepId || !filename) {
+    return null;
+  }
+  const step = getRunStep(details, stepId);
+  if (!step) {
+    return null;
+  }
+  return step.artifacts.find((artifact) => artifact.filename === filename) ?? null;
+}
+
+function getEvidenceOptions(
+  runs: RunSummary[],
+  detailsMap: Record<string, RunDetails>,
+  search: string
+) {
+  const normalized = search.trim().toLowerCase();
+  const sortedRuns = [...runs].sort((a, b) => b.runId.localeCompare(a.runId));
+  const options: Array<{ key: string; value: string; label: string }> = [];
+  for (const run of sortedRuns) {
+    const details = getRunDetails(detailsMap, run.runId);
+    const steps = details?.steps ?? [];
+    for (const step of steps) {
+      for (const artifact of step.artifacts) {
+        const label = `${run.runId} / ${step.id} / ${artifact.label}:${artifact.filename}`;
+        if (normalized && !label.toLowerCase().includes(normalized)) {
+          continue;
+        }
+        options.push({
+          key: `${run.runId}-${step.id}-${artifact.filename}`,
+          value: `${run.runId}::${step.id}::${artifact.filename}`,
+          label
+        });
+      }
+    }
+  }
+  return options;
+}
 
 function getStepTypeCounts(steps: PlanStep[]) {
   const counts = new Map<string, number>();
@@ -1099,9 +1877,10 @@ function getPlanFlags(plan: Plan) {
   return flags;
 }
 
-function renderExecutionOutput(output: string[]) {
+function renderExecutionOutput(output: string[], filterText: string, level: "all" | "error") {
   const lines = output.join("").split(/\r?\n/);
-  const groups = groupOutputByStep(lines);
+  const filteredLines = filterExecutionLines(lines, filterText, level);
+  const groups = groupOutputByStep(filteredLines);
   if (groups.length === 0) {
     return <div className="output">No output yet</div>;
   }
@@ -1109,15 +1888,50 @@ function renderExecutionOutput(output: string[]) {
     <div className="output-group" key={group.title}>
       <div className={`output-header ${group.statusClass}`}>
         <span>{group.title}</span>
-        <span>{group.statusLabel}</span>
+        <span className="output-meta">
+          {group.cacheHit ? <span className="cache-pill">cache</span> : null}
+          {typeof group.attempts === "number" ? (
+            <span className="attempts-pill">attempts {group.attempts}</span>
+          ) : null}
+          {group.errorCount ? <span className="error-pill">errors {group.errorCount}</span> : null}
+          {formatGroupStatus(group)}
+        </span>
       </div>
       <pre className="output">{group.lines.join("\n")}</pre>
     </div>
   ));
 }
 
+function filterExecutionLines(lines: string[], filterText: string, level: "all" | "error") {
+  const normalizedText = filterText.trim().toLowerCase();
+  return lines.filter((line) => {
+    if (!line) {
+      return false;
+    }
+    if (level === "error") {
+      const errorHit = line.includes("ERROR") || line.includes(" FAIL");
+      if (!errorHit) {
+        return false;
+      }
+    }
+    if (normalizedText) {
+      return line.toLowerCase().includes(normalizedText);
+    }
+    return true;
+  });
+}
+
 function groupOutputByStep(lines: string[]) {
-  const groups: Array<{ title: string; lines: string[]; statusLabel: string; statusClass: string }> = [];
+  const groups: Array<{
+    title: string;
+    lines: string[];
+    statusLabel: string;
+    statusClass: string;
+    durationMs?: number;
+    cacheHit?: boolean;
+    attempts?: number;
+    errorCount?: number;
+  }> = [];
   let current = createGroup("General logs");
   for (const line of lines) {
     if (!line) continue;
@@ -1134,11 +1948,26 @@ function groupOutputByStep(lines: string[]) {
 }
 
 function createGroup(title: string) {
-  return { title, lines: [] as string[], statusLabel: "RUNNING", statusClass: "running" };
+  return {
+    title,
+    lines: [] as string[],
+    statusLabel: "RUNNING",
+    statusClass: "running",
+    cacheHit: false,
+    attempts: undefined,
+    errorCount: 0
+  };
 }
 
 function updateGroupStatus(
-  group: { statusLabel: string; statusClass: string },
+  group: {
+    statusLabel: string;
+    statusClass: string;
+    durationMs?: number;
+    cacheHit?: boolean;
+    attempts?: number;
+    errorCount?: number;
+  },
   line: string
 ) {
   if (line.includes(" OK")) {
@@ -1149,4 +1978,29 @@ function updateGroupStatus(
     group.statusLabel = "FAIL";
     group.statusClass = "fail";
   }
+  if (line.includes(" SKIPPED")) {
+    group.statusLabel = "SKIPPED";
+    group.statusClass = "skipped";
+  }
+  if (line.toLowerCase().includes("cache")) {
+    group.cacheHit = true;
+  }
+  if (line.toLowerCase().includes("error")) {
+    group.errorCount = (group.errorCount ?? 0) + 1;
+  }
+  const attemptMatch = line.match(/attempts=(\d+)/);
+  if (attemptMatch) {
+    group.attempts = Number.parseInt(attemptMatch[1], 10);
+  }
+  const durationMatch = line.match(/durationMs=(\d+)/);
+  if (durationMatch) {
+    group.durationMs = Number.parseInt(durationMatch[1], 10);
+  }
+}
+
+function formatGroupStatus(group: { statusLabel: string; durationMs?: number }) {
+  if (typeof group.durationMs === "number") {
+    return `${group.statusLabel} (${group.durationMs}ms)`;
+  }
+  return group.statusLabel;
 }

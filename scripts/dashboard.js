@@ -4,6 +4,12 @@ const { exec } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { promisify } = require("util");
+const {
+  sanitizeReportName,
+  buildEvidenceCatalog,
+  buildReportHtml,
+  buildReportDocx
+} = require("./report");
 
 const execAsync = promisify(exec);
 const PORT = process.env.PORT || 3000;
@@ -21,11 +27,17 @@ const routes = {
   "/api/examples": handleGetExamples,
   "/api/run": handleRunPlan,
   "/api/status": handleGetStatus,
-  "/api/runs": handleGetRuns,
+  "/api/stop": handleStopExecution,
+  "/api/runs": handleRuns,
+  "/api/run-details": handleRunDetails,
+  "/api/reports": handleReports,
+  "/api/reports/auto": handleReportAuto,
+  "/api/reports/generate": handleReportGenerate,
   "/api/triggers": handleTriggers
 };
 
 let triggers = [];
+let triggerObserver = null;
 
 async function loadTriggers() {
   try {
@@ -85,6 +97,27 @@ function deleteTrigger(id) {
   }
   triggers.splice(index, 1);
   return true;
+}
+
+function startTriggerObserver() {
+  if (triggerObserver) {
+    return;
+  }
+  triggerObserver = setInterval(async () => {
+    let changed = false;
+    const now = new Date().toISOString();
+    for (const trigger of triggers) {
+      if (trigger.status !== "observing") {
+        continue;
+      }
+      trigger.updatedAt = now;
+      trigger.lastMessage = `observing @ ${now}`;
+      changed = true;
+    }
+    if (changed) {
+      await saveTriggers();
+    }
+  }, 2500);
 }
 
 async function handleGetPlans(req, res) {
@@ -335,6 +368,14 @@ function buildStepDetailData(step, behaviors, curl) {
     };
   }
 
+  if (step.type === "logstream") {
+    const logstream = step.config && step.config.logstream ? step.config.logstream : {};
+    return {
+      url: logstream.url || "",
+      title: logstream.title || ""
+    };
+  }
+
   return null;
 }
 
@@ -422,6 +463,9 @@ function defaultArtifactsForType(type) {
   if (type === "specialist") {
     return ["file.txt"];
   }
+  if (type === "logstream") {
+    return ["evidence.html"];
+  }
   return [];
 }
 
@@ -461,18 +505,19 @@ async function handleRunPlan(req, res) {
       const stepsFlags = buildStepsFlags(steps);
       const command = `npm start -- --plan "${safePlanPath}" --out runs${rangeFlags}${stepsFlags}${planSourceFlag}`;
       
-      runningExecutions.set(executionId, {
-        planPath,
-        status: "running",
-        startedAt: new Date().toISOString(),
-        output: [],
-        fromStep: range?.fromStep,
-        toStep: range?.toStep,
-        selectedSteps: steps ?? null
-      });
-      
-      // Execute in background
-      const child = exec(command, { cwd: process.cwd() });
+        // Execute in background
+        const child = exec(command, { cwd: process.cwd() });
+
+        runningExecutions.set(executionId, {
+          planPath,
+          status: "running",
+          startedAt: new Date().toISOString(),
+          output: [],
+          fromStep: range?.fromStep,
+          toStep: range?.toStep,
+          selectedSteps: steps ?? null,
+          child
+        });
       
       child.stdout.on("data", (data) => {
         const execution = runningExecutions.get(executionId);
@@ -539,6 +584,40 @@ async function handleRunPlan(req, res) {
       res.end(JSON.stringify({ error: error.message }));
     }
   });
+}
+
+async function handleStopExecution(req, res) {
+  try {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const executionId = url.searchParams.get("id");
+    if (!executionId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "executionId is required" }));
+      return;
+    }
+    const execution = runningExecutions.get(executionId);
+    if (!execution) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Execution not found" }));
+      return;
+    }
+    if (execution.status !== "running") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, status: execution.status }));
+      return;
+    }
+    const child = execution.child;
+    if (child) {
+      child.kill("SIGTERM");
+    }
+    execution.status = "stopped";
+    execution.finishedAt = new Date().toISOString();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, status: execution.status }));
+  } catch (error) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: error.message }));
+  }
 }
 
 async function resolveRunSelection(
@@ -707,8 +786,37 @@ async function handleGetStatus(req, res) {
   res.end(JSON.stringify(execution));
 }
 
-async function handleGetRuns(req, res) {
+async function handleRuns(req, res) {
   try {
+    if (req.method === "DELETE") {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const runId = url.searchParams.get("runId");
+      if (!runId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "runId is required" }));
+        return;
+      }
+      if (runId.includes("/") || runId.includes("\\")) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid runId" }));
+        return;
+      }
+      const runDir = path.join(process.cwd(), "runs", runId);
+      if (!fs.existsSync(runDir)) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "run not found" }));
+        return;
+      }
+      await fs.promises.rm(runDir, { recursive: true, force: true });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (req.method !== "GET") {
+      res.writeHead(405, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Method not allowed" }));
+      return;
+    }
     const runsDir = path.join(process.cwd(), "runs");
     if (!fs.existsSync(runsDir)) {
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -775,6 +883,281 @@ async function handleGetRuns(req, res) {
     res.writeHead(500, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: error.message }));
   }
+}
+
+async function handleRunDetails(req, res) {
+  try {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const runId = url.searchParams.get("runId");
+    if (!runId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "runId is required" }));
+      return;
+    }
+    const runDir = path.join(process.cwd(), "runs", runId);
+    const summaryPath = path.join(runDir, "00_runSummary.json");
+    if (!fs.existsSync(summaryPath)) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "run not found" }));
+      return;
+    }
+    const raw = await fs.promises.readFile(summaryPath, "utf-8");
+    const summary = JSON.parse(raw);
+    const catalog = buildEvidenceCatalog(summary, runId);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ runId, summary, steps: catalog.steps }));
+  } catch (error) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: error.message }));
+  }
+}
+
+async function handleReports(req, res) {
+  try {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    if (req.method === "GET") {
+      const runId = url.searchParams.get("runId");
+      if (!runId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "runId is required" }));
+        return;
+      }
+      const reportsDir = path.join(process.cwd(), "runs", runId, "reports");
+      if (!fs.existsSync(reportsDir)) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ reports: [] }));
+        return;
+      }
+      const entries = await fs.promises.readdir(reportsDir);
+      const reports = entries
+        .filter((name) => name.endsWith(".json"))
+        .map((name) => {
+          const base = name.replace(/\.json$/, "");
+          return {
+            name: base,
+            jsonUrl: `/runs/${runId}/reports/${base}.json`,
+            htmlUrl: `/runs/${runId}/reports/${base}.html`,
+            docxUrl: `/runs/${runId}/reports/${base}.docx`
+          };
+        });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ reports }));
+      return;
+    }
+    if (req.method === "POST") {
+      const payload = await readJsonBody(req);
+      if (!payload?.runId || !payload?.report) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "runId and report are required" }));
+        return;
+      }
+      const safeName = sanitizeReportName(payload.name || payload.report?.name);
+      const reportsDir = path.join(process.cwd(), "runs", payload.runId, "reports");
+      await fs.promises.mkdir(reportsDir, { recursive: true });
+      const jsonPath = path.join(reportsDir, `${safeName}.json`);
+      await fs.promises.writeFile(jsonPath, JSON.stringify(payload.report, null, 2), "utf-8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        name: safeName,
+        jsonUrl: `/runs/${payload.runId}/reports/${safeName}.json`
+      }));
+      return;
+    }
+    res.writeHead(405, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Method not allowed" }));
+  } catch (error) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: error.message }));
+  }
+}
+
+async function handleReportGenerate(req, res) {
+  try {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Method not allowed" }));
+      return;
+    }
+    const payload = await readJsonBody(req);
+    if (!payload?.report) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "report is required" }));
+      return;
+    }
+    const blocks = Array.isArray(payload.report?.blocks) ? payload.report.blocks : [];
+    const baseRunId =
+      String(payload.runId || payload.report?.runId || "") ||
+      String(blocks.find((block) => block?.runId)?.runId || "");
+    if (!baseRunId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "runId is required (or set runId on evidence blocks)" }));
+      return;
+    }
+    const runId = baseRunId;
+    const runDir = path.join(process.cwd(), "runs", runId);
+    const summaryPath = path.join(runDir, "00_runSummary.json");
+    let summary = { steps: [] };
+    if (fs.existsSync(summaryPath)) {
+      const raw = await fs.promises.readFile(summaryPath, "utf-8");
+      summary = JSON.parse(raw);
+    } else {
+      const missingStepDir = blocks.find(
+        (block) => block?.type === "evidence" && (!block.runId || !block.stepDir)
+      );
+      if (missingStepDir) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "run not found" }));
+        return;
+      }
+    }
+    const reportBlocks = Array.isArray(payload.report?.blocks) ? payload.report.blocks : [];
+    const extraRunIds = Array.from(
+      new Set(
+        reportBlocks
+          .map((block) => String(block.runId || ""))
+          .filter((value) => value && value !== runId)
+      )
+    );
+    if (extraRunIds.length > 0) {
+      summary.byRun = {};
+      for (const extraRunId of extraRunIds) {
+        try {
+          const extraSummaryPath = path.join(process.cwd(), "runs", extraRunId, "00_runSummary.json");
+          const extraRaw = await fs.promises.readFile(extraSummaryPath, "utf-8");
+          summary.byRun[extraRunId] = JSON.parse(extraRaw);
+        } catch (error) {
+          summary.byRun[extraRunId] = null;
+        }
+      }
+    }
+    const safeName = sanitizeReportName(payload.name || payload.report?.name);
+    const reportsDir = path.join(runDir, "reports");
+    await fs.promises.mkdir(reportsDir, { recursive: true });
+    const jsonPath = path.join(reportsDir, `${safeName}.json`);
+    await fs.promises.writeFile(jsonPath, JSON.stringify(payload.report, null, 2), "utf-8");
+    const html = buildReportHtml(payload.report, summary, runId);
+    const htmlPath = path.join(reportsDir, `${safeName}.html`);
+    await fs.promises.writeFile(htmlPath, html, "utf-8");
+    const docx = buildReportDocx(payload.report, summary, runId);
+    const docxPath = path.join(reportsDir, `${safeName}.docx`);
+    await fs.promises.writeFile(docxPath, docx);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      name: safeName,
+      jsonUrl: `/runs/${runId}/reports/${safeName}.json`,
+      htmlUrl: `/runs/${runId}/reports/${safeName}.html`,
+      docxUrl: `/runs/${runId}/reports/${safeName}.docx`
+    }));
+  } catch (error) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: error.message }));
+  }
+}
+
+async function handleReportAuto(req, res) {
+  try {
+    if (req.method !== "POST") {
+      res.writeHead(405, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Method not allowed" }));
+      return;
+    }
+    const payload = await readJsonBody(req);
+    if (!payload?.runId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "runId is required" }));
+      return;
+    }
+    const runId = String(payload.runId);
+    const runDir = path.join(process.cwd(), "runs", runId);
+    const summaryPath = path.join(runDir, "00_runSummary.json");
+    if (!fs.existsSync(summaryPath)) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "run not found" }));
+      return;
+    }
+    const raw = await fs.promises.readFile(summaryPath, "utf-8");
+    const summary = JSON.parse(raw);
+    const report = buildAutoReportFromSummary(summary, runId);
+    const safeName = sanitizeReportName(payload.name || report.name);
+    const reportsDir = path.join(runDir, "reports");
+    await fs.promises.mkdir(reportsDir, { recursive: true });
+    const jsonPath = path.join(reportsDir, `${safeName}.json`);
+    await fs.promises.writeFile(jsonPath, JSON.stringify(report, null, 2), "utf-8");
+    const html = buildReportHtml(report, summary, runId);
+    const htmlPath = path.join(reportsDir, `${safeName}.html`);
+    await fs.promises.writeFile(htmlPath, html, "utf-8");
+    const docx = buildReportDocx(report, summary, runId);
+    const docxPath = path.join(reportsDir, `${safeName}.docx`);
+    await fs.promises.writeFile(docxPath, docx);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      name: safeName,
+      jsonUrl: `/runs/${runId}/reports/${safeName}.json`,
+      htmlUrl: `/runs/${runId}/reports/${safeName}.html`,
+      docxUrl: `/runs/${runId}/reports/${safeName}.docx`
+    }));
+  } catch (error) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: error.message }));
+  }
+}
+
+function buildAutoReportFromSummary(summary, runId) {
+  const blocks = [];
+  const feature = summary.feature || "";
+  blocks.push({
+    id: "auto-title",
+    type: "h1",
+    text: feature ? `Relatorio - ${feature}` : `Relatorio ${runId}`,
+    enabled: true
+  });
+  blocks.push({
+    id: "auto-meta",
+    type: "small",
+    text: `Run ${runId} gerado em ${summary.finishedAt || summary.startedAt || ""}`.trim(),
+    enabled: true
+  });
+  const steps = Array.isArray(summary.steps) ? summary.steps : [];
+  steps.forEach((step) => {
+    blocks.push({
+      id: `auto-${step.id}-title`,
+      type: "h2",
+      text: `${step.id} (${step.type})`,
+      enabled: true
+    });
+    const outputs = step.outputs || {};
+    const stepDir = outputs.stepDir;
+    const artifacts = [];
+    if (outputs.evidence) {
+      artifacts.push({ label: "evidence", filename: outputs.evidence });
+    }
+    if (outputs.screenshot) {
+      artifacts.push({ label: "screenshot", filename: outputs.screenshot });
+    }
+    if (Array.isArray(outputs.screenshots)) {
+      outputs.screenshots.forEach((name) => artifacts.push({ label: "screenshot", filename: name }));
+    }
+    artifacts.forEach((artifact, index) => {
+      if (!stepDir) {
+        return;
+      }
+      blocks.push({
+        id: `auto-${step.id}-ev-${index}`,
+        type: "evidence",
+        label: `${step.id} ${artifact.label}`,
+        runId,
+        stepId: step.id,
+        filename: artifact.filename,
+        stepDir,
+        enabled: true
+      });
+    });
+  });
+  return {
+    name: `auto-${runId}`,
+    runId,
+    blocks
+  };
 }
 
 async function handleTriggers(req, res) {
@@ -984,6 +1367,10 @@ server.listen(PORT, HOST, () => {
   console.log(`   - Monitor execution status`);
   console.log(`   - View results in real-time`);
   console.log(`\n⌨️  Press Ctrl+C to stop\n`);
+});
+
+setImmediate(() => {
+  loadTriggers().finally(() => startTriggerObserver());
 });
 
 server.on("error", (err) => {

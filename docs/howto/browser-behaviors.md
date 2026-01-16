@@ -40,11 +40,11 @@ Exemplo no plan:
 - `goto`: abre uma URL.
 - `fill`: preenche um campo.
 - `click`: clica em um elemento.
-- `waitFor`: espera um selector existir.
-- `expectText`: valida texto na pagina.
+- `waitForSelector`: espera um selector existir.
+- `waitForRequest`: espera por request com URL ou regex.
+- `waitForResponse`: espera por response com URL/regex e status opcional.
 - `search`: destaca texto antes da captura.
-- `screenshot`: captura tela.
-- `waitMs`: pausa por um tempo fixo.
+- `waitForTimeout`: pausa por um tempo fixo.
 
 ## Placeholders e contexto
 
@@ -68,9 +68,24 @@ Exemplo no plan:
 }
 ```
 
+- Para evitar `waitMs`, use `waitForNetworkIdle`:
+```json
+{
+  "config": {
+    "browser": {
+      "capture": {
+        "mode": "tiles",
+        "tiles": { "direction": "vertical", "waitForNetworkIdle": true }
+      }
+    }
+  }
+}
+```
+
 ## Reuse session
 
 - Evita reabrir browser a cada step.
+- Padrao: ativo quando o plan possui mais de um step browser.
 
 ```json
 {
@@ -84,3 +99,16 @@ Exemplo no plan:
 - Verifique selectors com devtools.
 - Para tables com overflow, use `evaluate`.
 - Prefira seletores estaveis (data-testid, ids).
+- Evite `waitForTimeout` quando puder usar `waitForResponse` ou `waitForRequest`.
+
+## Exemplos
+
+Esperar response da API:
+```json
+{ "type": "waitForResponse", "urlRegex": "api.example.com/users", "status": 200, "timeoutMs": 15000 }
+```
+
+Esperar request especifica:
+```json
+{ "type": "waitForRequest", "url": "/orders", "timeoutMs": 15000 }
+```

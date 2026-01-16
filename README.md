@@ -30,9 +30,10 @@ O agente deve suportar, no minimo:
 
 - browser: executa um behavior Playwright e captura screenshots
 - api: executa um curl, gera evidence HTML e exporta response
-- browser: step de navegacao com filtros, retries e captura configuravel
 - sqlEvidence: recebe query.sql + result.csv e gera evidencia verificavel com HTML renderizado, metadados simples e print
 - cli: executa um comando local, grava stdout/stderr e metadados simples
+- specialist: tarefas de escrita/append em arquivos e JSON estruturado
+- logstream: gera evidencias HTML a partir de logs
 
 Config basica por step (exemplos de campos):
 
@@ -41,6 +42,8 @@ Config basica por step (exemplos de campos):
 - browser: behaviorId, config.retries, config.retryDelayMs, config.browser.capture
 - sqlEvidence: config.sql.queryPath, config.sql.resultPath, config.sql.expectRows
 - cli: config.cli.command, config.cli.args, config.cli.cwd, config.cli.timeoutMs
+- specialist: config.specialist.task, config.specialist.output
+- logstream: config.logstream.entries (titulo, nivel, corpo)
 
 Captura de telas (exemplo para tabelas horizontais):
 
@@ -106,6 +109,7 @@ Para SQL evidence:
 - cada behavior e uma lista de acoes declarativas
 - permite placeholders do contexto nos valores das acoes
 - behaviors devem ser reutilizaveis entre features
+- inclui waits por request/response para eventos de API
 
 ### 3.2 Curl (.curl)
 
@@ -169,6 +173,9 @@ Implementado:
 - P5.3: pipeline pre/script/post no CLI
 - P5.4: heuristica de erro (exitCode, stderr patterns, successCriteria)
 - P5.5: redacao de segredos e validacao de credenciais para AWS CLI
+- P6: report builder (JSON + docx/html) com escolha de evidencias no dashboard
+- P7: logstream domain e specialist write/append/json
+- P8: dashboard com triggers, filtro de logs e controle de runs
 
 ## 6) Saida esperada (artefatos)
 
@@ -239,6 +246,11 @@ npm run dashboard
 
 Abra `http://localhost:3000` e escolha um plano em `examples/`.
 
+Tambem e possivel:
+- montar relatorios (JSON/HTML/DOCX) com evidencias selecionadas
+- revisar execucoes com filtros de log
+- remover runs antigas pelo GUI
+
 Comandos auxiliares:
 
 ```
@@ -257,6 +269,8 @@ O codigo agora e organizado por dominios, para facilitar debug e extensao:
 - `src/domains/api/`: execucao de curl e evidence HTML
 - `src/domains/sql/`: SQL evidence e renderizacao
 - `src/domains/cli/`: CLI runner e evidencia HTML
+- `src/domains/specialist/`: tarefas utilitarias (arquivos/JSON)
+- `src/domains/logstream/`: evidencias HTML a partir de logs
 
 ## 10) Testes
 
@@ -269,4 +283,4 @@ Padrao para adicionar um novo step ou comportamento:
 2) Atualize `src/core/types.ts` com o novo tipo/config.
 3) Conecte o executor no `src/core/runner.ts`.
 4) Escreva testes em `tests/` seguindo o padrao `pX-*.spec.ts`.
-5) Documente o novo fluxo aqui e no `HOWTO.md` se for um exemplo executavel.
+5) Documente o novo fluxo aqui e em `docs/howto/README.md` se for um exemplo executavel.

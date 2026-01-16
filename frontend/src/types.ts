@@ -80,6 +80,46 @@ export type RunSummary = {
   counts?: { OK: number; FAIL: number; SKIPPED: number };
 };
 
+export type RunDetailArtifact = {
+  label: string;
+  filename: string;
+  url: string;
+  kind: "image" | "html" | "file";
+};
+
+export type RunDetailStep = {
+  id: string;
+  type: string;
+  status: string;
+  stepDir: string;
+  artifacts: RunDetailArtifact[];
+};
+
+export type RunDetails = {
+  runId: string;
+  summary: Record<string, unknown>;
+  steps: RunDetailStep[];
+};
+
+export type ReportBlock = {
+  id: string;
+  type: "h1" | "h2" | "p" | "small" | "evidence";
+  text?: string;
+  label?: string;
+  caption?: string;
+  runId?: string;
+  stepId?: string;
+  filename?: string;
+  stepDir?: string;
+  enabled?: boolean;
+};
+
+export type ReportDocument = {
+  name: string;
+  runId: string;
+  blocks: ReportBlock[];
+};
+
 export type Trigger = {
   id: string;
   name: string;
