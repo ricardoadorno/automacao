@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "feature": "specialist-basic",
+    "ticket": "SPC-001",
+    "env": "local"
+  },
+  "steps": [
+    {
+      "id": "write-note",
+      "type": "specialist",
+      "config": {
+        "specialist": {
+          "task": "writeFile",
+          "outputPath": "note.txt",
+          "content": "run {runId}"
+        }
+      }
+    }
+  ]
+}

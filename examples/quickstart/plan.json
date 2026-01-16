@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "feature": "quickstart",
+    "env": "local"
+  },
+  "steps": [
+    {
+      "id": "cli-echo",
+      "type": "cli",
+      "config": {
+        "cli": {
+          "command": "node",
+          "args": ["-e", "console.log('ok')"]
+        }
+      }
+    },
+    {
+      "id": "write-file",
+      "type": "specialist",
+      "config": {
+        "specialist": {
+          "task": "writeFile",
+          "outputPath": "note.txt",
+          "content": "run {runId}"
+        }
+      }
+    }
+  ]
+}

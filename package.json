@@ -9,13 +9,15 @@
     "build": "tsc -p tsconfig.json",
     "start": "npm run build && node dist/index.js",
     "test": "vitest run",
-    "dashboard": "node scripts/generate-run-index.js && node scripts/dashboard.js",
+    "dashboard:build": "npm --prefix frontend run build",
+    "dashboard": "npm run dashboard:build && node scripts/generate-run-index.js && node scripts/dashboard.js",
     "runs:index": "node scripts/generate-run-index.js",
     "runs:serve": "node scripts/serve.js",
     "runs:view": "node scripts/generate-run-index.js && node scripts/serve.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
+    "dotenv": "^17.2.3",
     "mysql2": "^3.11.5",
     "playwright": "^1.42.1"
   },

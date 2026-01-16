@@ -1,0 +1,15 @@
+{
+  "metadata": {
+    "feature": "api-basic",
+    "ticket": "API-001",
+    "env": "local"
+  },
+  "curlPath": "examples/api-basic/request.curl",
+  "steps": [
+    {
+      "id": "get-status",
+      "type": "api",
+      "description": "GET status from httpbin"
+    }
+  ]
+}

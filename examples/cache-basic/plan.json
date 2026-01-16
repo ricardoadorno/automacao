@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "feature": "cache-basic",
+    "ticket": "CACHE-001",
+    "env": "local"
+  },
+  "cache": {
+    "enabled": true,
+    "dir": ".cache/steps"
+  },
+  "curlPath": "examples/cache-basic/request.curl",
+  "steps": [
+    {
+      "id": "get-cache",
+      "type": "api",
+      "description": "Cache demo request"
+    }
+  ]
+}

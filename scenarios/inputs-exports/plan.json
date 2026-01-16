@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "feature": "inputs-exports",
+    "ticket": "CTX-001",
+    "env": "local"
+  },
+  "inputs": {
+    "defaults": {
+      "message": "hello",
+      "name": "guest"
+    },
+    "overrides": {
+      "name": "operator"
+    },
+    "envPrefix": "AUTO_"
+  },
+  "behaviorsPath": "scenarios/inputs-exports/behaviors.json",
+  "steps": [
+    {
+      "id": "emit-token",
+      "type": "cli",
+      "config": {
+        "cli": {
+          "command": "node",
+          "args": ["-e", "console.log('token=abc123')"]
+        }
+      },
+      "exports": {
+        "token": { "source": "stdout", "regex": "token=(\\w+)" }
+      }
+    },
+    {
+      "id": "write-note",
+      "type": "specialist",
+      "requires": ["token"],
+      "config": {
+        "specialist": {
+          "task": "writeFile",
+          "outputPath": "note.txt",
+          "content": "{message} {name} token {token}"
+        }
+      }
+    },
+    {
+      "id": "ui-check",
+      "type": "browser",
+      "behaviorId": "open-example",
+      "requires": ["token"]
+    }
+  ]
+}

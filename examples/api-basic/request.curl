@@ -1,0 +1,1 @@
+curl --request GET --url https://httpbin.org/get?hello=world

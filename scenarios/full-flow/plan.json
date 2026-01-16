@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "feature": "full-flow",
+    "ticket": "FLOW-001",
+    "env": "local"
+  },
+  "behaviorsPath": "scenarios/full-flow/behaviors.json",
+  "curlPath": "scenarios/full-flow/request.curl",
+  "inputs": {
+    "items": [
+      { "term": "alpha" },
+      { "term": "beta" }
+    ]
+  },
+  "browser": {
+    "reuseSession": true,
+    "headless": true
+  },
+  "steps": [
+    {
+      "id": "api-loop",
+      "type": "api",
+      "loop": { "usePlanItems": true },
+      "description": "Looped API call"
+    },
+    {
+      "id": "sql-count",
+      "type": "sqlEvidence",
+      "config": {
+        "sql": {
+          "adapter": "sqlite",
+          "dbPath": "scenarios/full-flow/sample.db",
+          "query": "select count(*) as total from items;",
+          "expectRows": 1
+        }
+      }
+    },
+    {
+      "id": "ui-check",
+      "type": "browser",
+      "behaviorId": "open-example"
+    }
+  ]
+}

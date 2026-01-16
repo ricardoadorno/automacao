@@ -1,17 +1,31 @@
-import { promises as fs } from "fs";
+﻿import { promises as fs } from "fs";
+import { createHash } from "crypto";
 import path from "path";
 import { loadBehaviors } from "../domains/browser/behaviors";
-import { executeBrowserStep } from "../domains/browser/browser";
+import { executeBrowserStep, executeBrowserStepWithSession } from "../domains/browser/browser";
+import { BrowserSession, closeSession, createSession } from "../domains/browser/session";
 import { Context, resolveTemplatesDeep } from "./context";
 import { writeErrorFile, writeErrorPng } from "./errors";
 import { applyExports } from "./exports";
 import { executeApiStep } from "../domains/api/api";
 import { closeSqlConnections, executeSqlEvidenceStep } from "../domains/sql/sql";
 import { executeCliStep } from "../domains/cli/cli";
+import { executeSpecialistStep } from "../domains/specialist/specialist";
 import { Plan, PlanStep, StepResult } from "./types";
 import { createRunId, nowIso } from "./utils";
 
-export async function executePlan(plan: Plan, outDir: string): Promise<void> {
+export interface ExecutionOptions {
+  fromStep?: number;
+  toStep?: number;
+  planPath?: string;
+  selectedSteps?: number[];
+}
+
+export async function executePlan(
+  plan: Plan,
+  outDir: string,
+  options: ExecutionOptions = {}
+): Promise<void> {
   const runId = createRunId();
   const runDir = path.resolve(outDir, runId);
   const stepsDir = path.join(runDir, "steps");
@@ -19,14 +33,23 @@ export async function executePlan(plan: Plan, outDir: string): Promise<void> {
   const curlPath = plan.curlPath ?? "";
   const runStartedAt = nowIso();
   const totalSteps = plan.steps.length;
-  const context: Context = {
-    feature: plan.metadata.feature,
-    ticket: plan.metadata.ticket ?? "",
-    env: plan.metadata.env ?? "",
+  const cacheRoot = resolveCacheRoot(plan);
+  if (cacheRoot) {
+    await fs.mkdir(cacheRoot, { recursive: true });
+  }
+  const range = normalizeStepRange(totalSteps, options);
+  const selectedSet =
+    options.selectedSteps && options.selectedSteps.length > 0
+      ? new Set(options.selectedSteps)
+      : null;
+  const context: Context = buildContext(plan, {
     runId,
-    startedAt: runStartedAt,
-    ...(plan.context ?? {})
-  };
+    startedAt: runStartedAt
+  });
+  const reuseSession = plan.browser?.reuseSession ?? false;
+  const sharedSession: BrowserSession | null = reuseSession
+    ? await createSession(plan.browser)
+    : null;
 
   logRunStart(runId, plan, outDir, totalSteps);
   await fs.mkdir(stepsDir, { recursive: true });
@@ -36,125 +59,78 @@ export async function executePlan(plan: Plan, outDir: string): Promise<void> {
   try {
     for (let i = 0; i < plan.steps.length; i += 1) {
       const step = plan.steps[i];
+      const stepNumber = i + 1;
+      if (selectedSet && !selectedSet.has(stepNumber)) {
+        continue;
+      }
+      if (stepNumber < range.fromStep || stepNumber > range.toStep) {
+        continue;
+      }
       const stepIndex = String(i + 1).padStart(2, "0");
-      const stepDirName = `${stepIndex}_${step.id ?? step.type}`;
-      const stepDir = path.join(stepsDir, stepDirName);
-
-      await fs.mkdir(stepDir, { recursive: true });
-
-      const stepStartedAt = nowIso();
-      let status: StepResult["status"] = "SKIPPED";
-      const outputs: Record<string, unknown> = {};
-      outputs.stepDir = `steps/${stepDirName}`;
-      let notes: string | undefined = "Bootstrap: step execution not implemented yet";
-      const errorPath = path.join(stepDir, "error.json");
-      const errorPngPath = path.join(stepDir, "error.png");
-      let resolvedStep = step;
-
-      try {
-        logStepStart(i + 1, totalSteps, step);
-        ensureRequires(step, context);
-        resolvedStep = resolveTemplatesDeep(step, context);
-
-        if (resolvedStep.type === "browser") {
-          const actions = getBehaviorActions(resolvedStep.behaviorId, behaviors, context);
-          const browserResult = await executeBrowserStep(resolvedStep, actions, stepDir, plan.browser);
-          status = "OK";
-          outputs.screenshot = path.basename(browserResult.screenshotPath);
-          if (browserResult.screenshotPaths.length > 1) {
-            outputs.screenshots = browserResult.screenshotPaths.map((item) => path.basename(item));
-          }
-          outputs.attempts = browserResult.attempts;
-          notes = undefined;
-        } else if (resolvedStep.type === "api") {
-          const apiResult = await executeApiStep(resolvedStep, curlPath, stepDir, context);
-          status = "OK";
-          outputs.evidence = apiResult.evidenceFile;
-          if (apiResult.statusCode) {
-            outputs.statusCode = apiResult.statusCode;
-          }
-          if (apiResult.responseData) {
-            outputs.responseData = apiResult.responseData;
-          }
-          applyExports(context, resolvedStep.exports, { 
-            responseData: apiResult.responseData,
-            responseText: typeof apiResult.responseData === "string" ? apiResult.responseData : JSON.stringify(apiResult.responseData)
-          });
-          notes = undefined;
-        } else if (resolvedStep.type === "sqlEvidence") {
-          const sqlResult = await executeSqlEvidenceStep(resolvedStep, stepDir, context);
-          status = "OK";
-          outputs.screenshot = path.basename(sqlResult.screenshotPath);
-          outputs.query = sqlResult.queryFile;
-          outputs.result = sqlResult.resultFile;
-          outputs.evidence = sqlResult.evidenceFile;
-          outputs.rows = sqlResult.rows;
-          applyExports(context, resolvedStep.exports, {
-            sqlRows: sqlResult.rowsData
-          });
-          notes = undefined;
-        } else if (resolvedStep.type === "cli") {
-          const cliResult = await executeCliStep(resolvedStep, stepDir);
-          status = "OK";
-          outputs.stdout = cliResult.stdoutFile;
-          outputs.stderr = cliResult.stderrFile;
-          outputs.evidence = cliResult.evidenceFile;
-          outputs.exitCode = cliResult.exitCode;
-          outputs.durationMs = cliResult.durationMs;
-          applyExports(context, resolvedStep.exports, {
-            stdout: cliResult.stdout,
-            stderr: cliResult.stderr
-          });
-          notes = undefined;
+      const loopItems = resolveLoopItems(step, plan);
+      if (loopItems.length === 0) {
+        const result = await runSingleStep({
+          step,
+          stepNumber,
+          totalSteps,
+          stepIndex,
+          stepDirRoot: stepsDir,
+          plan,
+          behaviors,
+          curlPath,
+          cacheRoot,
+          context,
+          sharedSession,
+          loopInfo: null
+        });
+        if (result) {
+          results.push(result);
         }
-        logStepSuccess(i + 1, totalSteps, resolvedStep, outputs);
-      } catch (error) {
-        status = "FAIL";
-        notes = error instanceof Error ? error.message : String(error);
-        logStepFailure(i + 1, totalSteps, step, notes);
-        await writeErrorFile(errorPath, error);
-        await writeErrorPng(errorPngPath);
-        if ((plan.failPolicy ?? "stop") === "stop") {
-          logStopOnFailure();
-          await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, notes);
-          results.push({
-            id: resolvedStep.id ?? resolvedStep.type,
-            type: resolvedStep.type,
-            status,
-            startedAt: stepStartedAt,
-            finishedAt: nowIso(),
-            inputs: resolvedStep,
-            outputs,
-            notes
-          });
+        if (result?.status === "FAIL" && (plan.failPolicy ?? "stop") === "stop") {
+          break;
+        }
+        continue;
+      }
+
+      for (let loopIndex = 0; loopIndex < loopItems.length; loopIndex += 1) {
+        const result = await runSingleStep({
+          step,
+          stepNumber,
+          totalSteps,
+          stepIndex,
+          stepDirRoot: stepsDir,
+          plan,
+          behaviors,
+          curlPath,
+          cacheRoot,
+          context,
+          sharedSession,
+          loopInfo: {
+            index: loopIndex,
+            total: loopItems.length,
+            item: loopItems[loopIndex]
+          }
+        });
+        if (result) {
+          results.push(result);
+        }
+        if (result?.status === "FAIL" && (plan.failPolicy ?? "stop") === "stop") {
           break;
         }
       }
-
-      const result: StepResult = {
-        id: resolvedStep.id ?? resolvedStep.type,
-        type: resolvedStep.type,
-        status,
-        startedAt: stepStartedAt,
-        finishedAt: nowIso(),
-        inputs: resolvedStep,
-        outputs,
-        notes
-      };
-
-      await fs.writeFile(
-        path.join(stepDir, "metadata.json"),
-        JSON.stringify(result, null, 2),
-        "utf-8"
-      );
-
-      results.push(result);
+      if ((plan.failPolicy ?? "stop") === "stop" && results.some((item) => item.status === "FAIL")) {
+        break;
+      }
     }
 
     const runSummary = {
       runId,
       startedAt: runStartedAt,
       finishedAt: nowIso(),
+      planPath: options.planPath ?? null,
+      fromStep: options.fromStep ?? null,
+      toStep: options.toStep ?? null,
+      selectedSteps: options.selectedSteps ?? null,
       feature: plan.metadata.feature,
       ticket: plan.metadata.ticket ?? null,
       env: plan.metadata.env ?? null,
@@ -172,8 +148,507 @@ export async function executePlan(plan: Plan, outDir: string): Promise<void> {
     await fs.writeFile(path.join(runDir, "index.html"), indexHtml, "utf-8");
     logRunFinish(runId, results);
   } finally {
+    if (sharedSession) {
+      await closeSession(sharedSession);
+    }
     await closeSqlConnections();
   }
+}
+
+interface RunSingleStepInput {
+  step: PlanStep;
+  stepNumber: number;
+  totalSteps: number;
+  stepIndex: string;
+  stepDirRoot: string;
+  plan: Plan;
+  behaviors: Awaited<ReturnType<typeof loadBehaviors>> | null;
+  curlPath: string;
+  cacheRoot: string | null;
+  context: Context;
+  sharedSession: BrowserSession | null;
+  loopInfo: { index: number; total: number; item: Context } | null;
+}
+
+async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | null> {
+  const {
+    step,
+    stepNumber,
+    totalSteps,
+    stepIndex,
+    stepDirRoot,
+    plan,
+    behaviors,
+    curlPath,
+    cacheRoot,
+    context,
+    sharedSession,
+    loopInfo
+  } = input;
+  const loopSuffix = loopInfo ? `__${String(loopInfo.index + 1).padStart(2, "0")}` : "";
+  const stepDirName = `${stepIndex}_${step.id ?? step.type}${loopSuffix}`;
+  const stepDir = path.join(stepDirRoot, stepDirName);
+  await fs.mkdir(stepDir, { recursive: true });
+
+  const stepStartedAt = nowIso();
+  let status: StepResult["status"] = "SKIPPED";
+  const outputs: Record<string, unknown> = {};
+  outputs.stepDir = `steps/${stepDirName}`;
+  let notes: string | undefined = "Bootstrap: step execution not implemented yet";
+  const errorPath = path.join(stepDir, "error.json");
+  const errorPngPath = path.join(stepDir, "error.png");
+  let resolvedStep = step;
+  let cachedExports: Record<string, unknown> | undefined;
+  let cachedOutputs: Record<string, unknown> | undefined;
+
+  const iterationContext = loopInfo
+    ? buildIterationContext(context, loopInfo.item, loopInfo.index, loopInfo.total)
+    : context;
+  const loopLabel = loopInfo ? ` item ${loopInfo.index + 1}/${loopInfo.total}` : "";
+
+  try {
+    logStepStart(stepNumber, totalSteps, step, loopLabel);
+    ensureRequires(step, iterationContext);
+    resolvedStep = resolveTemplatesDeep(step, iterationContext);
+
+    const cacheEnabled = shouldUseCache(cacheRoot, resolvedStep);
+    const cacheKey = cacheEnabled
+      ? await buildCacheKey(resolvedStep, plan, behaviors, iterationContext, loopInfo?.item ?? null)
+      : null;
+    if (cacheEnabled && cacheKey) {
+      const cacheHit = await readCacheEntry(cacheRoot, cacheKey);
+      if (cacheHit) {
+        cachedOutputs = cacheHit.outputs;
+        cachedExports = cacheHit.exportsPayload;
+        await restoreCachedArtifacts(cacheRoot, cacheKey, stepDir, cacheHit.artifacts);
+        status = "SKIPPED";
+        notes = "cache hit";
+        outputs.cacheHit = true;
+        outputs.loopIndex = loopInfo ? loopInfo.index + 1 : undefined;
+        outputs.loopTotal = loopInfo ? loopInfo.total : undefined;
+        outputs.loopItem = loopInfo ? loopInfo.item : undefined;
+        Object.assign(outputs, cachedOutputs ?? {});
+        outputs.stepDir = `steps/${stepDirName}`;
+        if (cachedExports && resolvedStep.exports) {
+          applyExports(context, resolvedStep.exports, cachedExports);
+        }
+        logStepCacheHit(stepNumber, totalSteps, resolvedStep, loopLabel);
+        await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, notes);
+        return {
+          id: buildStepResultId(resolvedStep, loopInfo),
+          type: resolvedStep.type,
+          status,
+          startedAt: stepStartedAt,
+          finishedAt: nowIso(),
+          inputs: resolvedStep,
+          outputs,
+          notes
+        };
+      }
+    }
+
+    if (resolvedStep.type === "browser") {
+      const actions = getBehaviorActions(resolvedStep.behaviorId, behaviors, iterationContext);
+      const browserResult = sharedSession
+        ? await executeBrowserStepWithSession(resolvedStep, actions, stepDir, sharedSession)
+        : await executeBrowserStep(resolvedStep, actions, stepDir, plan.browser);
+      status = "OK";
+      outputs.screenshot = path.basename(browserResult.screenshotPath);
+      if (browserResult.screenshotPaths.length > 1) {
+        outputs.screenshots = browserResult.screenshotPaths.map((item) => path.basename(item));
+      }
+      outputs.attempts = browserResult.attempts;
+      notes = undefined;
+    } else if (resolvedStep.type === "api") {
+      const apiResult = await executeApiStep(resolvedStep, curlPath, stepDir, iterationContext);
+      status = "OK";
+      outputs.evidence = apiResult.evidenceFile;
+      if (apiResult.statusCode) {
+        outputs.statusCode = apiResult.statusCode;
+      }
+      if (apiResult.responseData) {
+        outputs.responseData = apiResult.responseData;
+      }
+      const exportsPayload = {
+        responseData: apiResult.responseData,
+        responseText: typeof apiResult.responseData === "string" ? apiResult.responseData : JSON.stringify(apiResult.responseData)
+      };
+      applyExports(context, resolvedStep.exports, exportsPayload);
+      cachedExports = exportsPayload;
+      notes = undefined;
+    } else if (resolvedStep.type === "sqlEvidence") {
+      const sqlResult = await executeSqlEvidenceStep(resolvedStep, stepDir, iterationContext);
+      status = "OK";
+      outputs.screenshot = path.basename(sqlResult.screenshotPath);
+      outputs.query = sqlResult.queryFile;
+      outputs.result = sqlResult.resultFile;
+      outputs.evidence = sqlResult.evidenceFile;
+      outputs.rows = sqlResult.rows;
+      const exportsPayload = {
+        sqlRows: sqlResult.rowsData
+      };
+      applyExports(context, resolvedStep.exports, exportsPayload);
+      cachedExports = exportsPayload;
+      notes = undefined;
+    } else if (resolvedStep.type === "cli") {
+      const cliResult = await executeCliStep(resolvedStep, stepDir);
+      status = "OK";
+      outputs.stdout = cliResult.stdoutFile;
+      outputs.stderr = cliResult.stderrFile;
+      outputs.evidence = cliResult.evidenceFile;
+      outputs.exitCode = cliResult.exitCode;
+      outputs.durationMs = cliResult.durationMs;
+      const exportsPayload = {
+        stdout: cliResult.stdout,
+        stderr: cliResult.stderr
+      };
+      applyExports(context, resolvedStep.exports, exportsPayload);
+      cachedExports = exportsPayload;
+      notes = undefined;
+    } else if (resolvedStep.type === "specialist") {
+      const specialistResult = await executeSpecialistStep(resolvedStep, stepDir);
+      status = "OK";
+      if (specialistResult.relativePath) {
+        outputs.file = specialistResult.relativePath;
+      }
+      outputs.filePath = specialistResult.filePath;
+      notes = undefined;
+    }
+
+    outputs.loopIndex = loopInfo ? loopInfo.index + 1 : undefined;
+    outputs.loopTotal = loopInfo ? loopInfo.total : undefined;
+    outputs.loopItem = loopInfo ? loopInfo.item : undefined;
+    logStepSuccess(stepNumber, totalSteps, resolvedStep, outputs, loopLabel);
+
+    if (shouldUseCache(cacheRoot, resolvedStep)) {
+      const cacheKey = await buildCacheKey(resolvedStep, plan, behaviors, iterationContext, loopInfo?.item ?? null);
+      if (cacheKey) {
+        await writeCacheEntry(cacheRoot, cacheKey, resolvedStep, stepDir, outputs, cachedExports);
+      }
+    }
+  } catch (error) {
+    status = "FAIL";
+    notes = error instanceof Error ? error.message : String(error);
+    logStepFailure(stepNumber, totalSteps, step, notes, loopLabel);
+    await writeErrorFile(errorPath, error);
+    await writeErrorPng(errorPngPath);
+    if ((plan.failPolicy ?? "stop") === "stop") {
+      logStopOnFailure();
+      await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, notes);
+      return {
+        id: buildStepResultId(resolvedStep, loopInfo),
+        type: resolvedStep.type,
+        status,
+        startedAt: stepStartedAt,
+        finishedAt: nowIso(),
+        inputs: resolvedStep,
+        outputs,
+        notes
+      };
+    }
+  }
+
+  const result: StepResult = {
+    id: buildStepResultId(resolvedStep, loopInfo),
+    type: resolvedStep.type,
+    status,
+    startedAt: stepStartedAt,
+    finishedAt: nowIso(),
+    inputs: resolvedStep,
+    outputs,
+    notes
+  };
+
+  await fs.writeFile(
+    path.join(stepDir, "metadata.json"),
+    JSON.stringify(result, null, 2),
+    "utf-8"
+  );
+
+  return result;
+}
+
+function resolveLoopItems(step: PlanStep, plan: Plan): Context[] {
+  if (step.loop?.items && Array.isArray(step.loop.items)) {
+    return step.loop.items.map((item) => normalizeContext(item));
+  }
+  if (step.loop?.usePlanItems && plan.inputs?.items && Array.isArray(plan.inputs.items)) {
+    return plan.inputs.items.map((item) => normalizeContext(item));
+  }
+  return [];
+}
+
+function buildIterationContext(
+  base: Context,
+  item: Context,
+  index: number,
+  total: number
+): Context {
+  return {
+    ...base,
+    ...normalizeContext(item),
+    loopIndex: String(index + 1),
+    loopTotal: String(total)
+  };
+}
+
+function buildStepResultId(step: PlanStep, loopInfo: { index: number } | null): string {
+  const baseId = step.id ?? step.type;
+  if (!loopInfo) {
+    return baseId;
+  }
+  return `${baseId}__${String(loopInfo.index + 1).padStart(2, "0")}`;
+}
+
+function buildContext(plan: Plan, runtime: { runId: string; startedAt: string }): Context {
+  const defaults = normalizeContext(plan.inputs?.defaults);
+  const planContext = normalizeContext(plan.context);
+  const overrides = normalizeContext(plan.inputs?.overrides);
+  const envContext = loadEnvContext(plan.inputs?.envPrefix);
+  const core = {
+    feature: plan.metadata.feature,
+    ticket: plan.metadata.ticket ?? "",
+    env: plan.metadata.env ?? "",
+    runId: runtime.runId,
+    startedAt: runtime.startedAt
+  };
+
+  return {
+    ...defaults,
+    ...planContext,
+    ...overrides,
+    ...envContext,
+    ...core
+  };
+}
+
+function normalizeContext(input?: Context): Context {
+  if (!input) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(input).map(([key, value]) => [key, String(value)])
+  );
+}
+
+function loadEnvContext(prefix = "AUTO_"): Context {
+  const out: Context = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith(prefix)) {
+      continue;
+    }
+    const normalizedKey = key.slice(prefix.length);
+    if (!normalizedKey) {
+      continue;
+    }
+    out[normalizedKey] = value ?? "";
+  }
+  return out;
+}
+
+function normalizeStepRange(totalSteps: number, options: ExecutionOptions) {
+  const fromStepRaw = options.fromStep ?? 1;
+  const toStepRaw = options.toStep ?? totalSteps;
+  const fromStep = Number.isFinite(fromStepRaw) ? Math.floor(fromStepRaw) : 1;
+  const toStep = Number.isFinite(toStepRaw) ? Math.floor(toStepRaw) : totalSteps;
+
+  if (fromStep < 1 || toStep < 1 || fromStep > totalSteps || toStep > totalSteps) {
+    throw new Error(`Invalid range: fromStep=${fromStep} toStep=${toStep} total=${totalSteps}`);
+  }
+  if (fromStep > toStep) {
+    throw new Error(`Invalid range: fromStep=${fromStep} is greater than toStep=${toStep}`);
+  }
+
+  return { fromStep, toStep };
+}
+
+function resolveCacheRoot(plan: Plan): string | null {
+  if (!plan.cache?.enabled) {
+    return null;
+  }
+  const root = plan.cache.dir
+    ? path.resolve(plan.cache.dir)
+    : path.join(process.cwd(), ".cache", "steps");
+  return root;
+}
+
+function shouldUseCache(cacheRoot: string | null, step: PlanStep): boolean {
+  if (!cacheRoot) {
+    return false;
+  }
+  if (step.cache === false) {
+    return false;
+  }
+  return true;
+}
+
+async function buildCacheKey(
+  step: PlanStep,
+  plan: Plan,
+  behaviors: Awaited<ReturnType<typeof loadBehaviors>> | null,
+  context: Context,
+  loopItem?: Context | null
+): Promise<string | null> {
+  const payload: Record<string, unknown> = {
+    step,
+    failPolicy: plan.failPolicy ?? "stop",
+    loopItem: loopItem ?? null
+  };
+
+  if (step.type === "browser" && step.behaviorId && behaviors) {
+    const actions = getBehaviorActions(step.behaviorId, behaviors, context);
+    payload.behavior = actions;
+  }
+
+  if (step.type === "api" && plan.curlPath) {
+    const curlContent = await readFileSafe(plan.curlPath);
+    payload.curl = curlContent;
+  }
+
+  if (step.type === "sqlEvidence" && step.config?.sql) {
+    const sql = step.config.sql;
+    if (sql.queryPath) {
+      payload.sqlQuery = await readFileSafe(sql.queryPath);
+    } else if (sql.query) {
+      payload.sqlQuery = sql.query;
+    }
+    payload.sqlAdapter = sql.adapter ?? "";
+  }
+
+  const hash = createHash("sha256").update(stableStringify(payload)).digest("hex");
+  return hash;
+}
+
+async function readFileSafe(filePath: string): Promise<string> {
+  const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+  try {
+    return await fs.readFile(resolved, "utf-8");
+  } catch (error) {
+    return "";
+  }
+}
+
+async function readCacheEntry(cacheRoot: string | null, key: string) {
+  if (!cacheRoot) {
+    return null;
+  }
+  const entryDir = path.join(cacheRoot, key);
+  const metaPath = path.join(entryDir, "cache.json");
+  try {
+    const raw = await fs.readFile(metaPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return parsed;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function restoreCachedArtifacts(
+  cacheRoot: string | null,
+  key: string,
+  stepDir: string,
+  artifacts: string[]
+): Promise<void> {
+  if (!cacheRoot || !Array.isArray(artifacts)) {
+    return;
+  }
+  const sourceDir = path.join(cacheRoot, key, "artifacts");
+  for (const name of artifacts) {
+    const source = path.join(sourceDir, name);
+    const target = path.join(stepDir, name);
+    try {
+      await fs.copyFile(source, target);
+    } catch (error) {
+      // ignore missing artifacts
+    }
+  }
+}
+
+async function writeCacheEntry(
+  cacheRoot: string | null,
+  key: string,
+  step: PlanStep,
+  stepDir: string,
+  outputs: Record<string, unknown>,
+  exportsPayload?: Record<string, unknown>
+): Promise<void> {
+  if (!cacheRoot) {
+    return;
+  }
+  const entryDir = path.join(cacheRoot, key);
+  const artifactsDir = path.join(entryDir, "artifacts");
+  await fs.mkdir(artifactsDir, { recursive: true });
+
+  const artifacts = collectArtifactFiles(outputs);
+  for (const name of artifacts) {
+    const source = path.join(stepDir, name);
+    const target = path.join(artifactsDir, name);
+    try {
+      await fs.copyFile(source, target);
+    } catch (error) {
+      // ignore missing artifacts
+    }
+  }
+
+  const cacheMeta = {
+    key,
+    stepId: step.id ?? step.type,
+    type: step.type,
+    createdAt: nowIso(),
+    outputs,
+    exportsPayload: exportsPayload ?? null,
+    artifacts
+  };
+  await fs.writeFile(path.join(entryDir, "cache.json"), JSON.stringify(cacheMeta, null, 2), "utf-8");
+}
+
+function collectArtifactFiles(outputs: Record<string, unknown>): string[] {
+  const files: string[] = [];
+  addArtifactFile(files, outputs.screenshot);
+  addArtifactFiles(files, outputs.screenshots);
+  addArtifactFile(files, outputs.query);
+  addArtifactFile(files, outputs.result);
+  addArtifactFile(files, outputs.evidence);
+  addArtifactFile(files, outputs.stdout);
+  addArtifactFile(files, outputs.stderr);
+  return files;
+}
+
+function addArtifactFile(list: string[], value: unknown): void {
+  if (typeof value === "string" && value.length > 0) {
+    list.push(value);
+  }
+}
+
+function addArtifactFiles(list: string[], value: unknown): void {
+  if (!Array.isArray(value)) {
+    return;
+  }
+  value.forEach((item) => {
+    if (typeof item === "string" && item.length > 0) {
+      list.push(item);
+    }
+  });
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+      a.localeCompare(b)
+    );
+    return `{${entries
+      .map(([key, val]) => `"${key}":${stableStringify(val)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function logStepCacheHit(index: number, total: number, step: PlanStep, suffix = ""): void {
+  const label = step.id ?? step.type;
+  console.log(`ÃY"Ã¦ Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} SKIPPED (cache)`);
 }
 
 function buildIndexHtml(summary: { runId: string; steps: StepResult[] }): string {
@@ -248,34 +723,35 @@ function logRunStart(runId: string, plan: Plan, outDir: string, totalSteps: numb
   ]
     .filter(Boolean)
     .join(" ");
-  console.log(`🚀 Run ${runId} started (${totalSteps} steps) ${metadata}`.trim());
-  console.log(`📂 Output: ${path.resolve(outDir)}`);
+  console.log(`ðŸš€ Run ${runId} started (${totalSteps} steps) ${metadata}`.trim());
+  console.log(`ðŸ“‚ Output: ${path.resolve(outDir)}`);
 }
 
-function logStepStart(index: number, total: number, step: PlanStep): void {
+function logStepStart(index: number, total: number, step: PlanStep, suffix = ""): void {
   const label = step.id ?? step.type;
   const details = describeStep(step);
-  console.log(`➡️  Step ${String(index).padStart(2, "0")}/${total} ${label} (${step.type})${details}`);
+  console.log(`âž¡ï¸  Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} (${step.type})${details}`);
 }
 
 function logStepSuccess(
   index: number,
   total: number,
   step: PlanStep,
-  outputs: Record<string, unknown>
+  outputs: Record<string, unknown>,
+  suffix = ""
 ): void {
   const label = step.id ?? step.type;
   const outputSummary = describeOutputs(outputs);
-  console.log(`✅ Step ${String(index).padStart(2, "0")}/${total} ${label} OK${outputSummary}`);
+  console.log(`âœ… Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} OK${outputSummary}`);
 }
 
-function logStepFailure(index: number, total: number, step: PlanStep, notes: string): void {
+function logStepFailure(index: number, total: number, step: PlanStep, notes: string, suffix = ""): void {
   const label = step.id ?? step.type;
-  console.log(`❌ Step ${String(index).padStart(2, "0")}/${total} ${label} FAIL: ${notes}`);
+  console.log(`âŒ Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} FAIL: ${notes}`);
 }
 
 function logStopOnFailure(): void {
-  console.log("🛑 Stop on failure (failPolicy=stop)");
+  console.log("ðŸ›‘ Stop on failure (failPolicy=stop)");
 }
 
 function logRunFinish(runId: string, results: StepResult[]): void {
@@ -286,7 +762,7 @@ function logRunFinish(runId: string, results: StepResult[]): void {
     },
     { OK: 0, FAIL: 0, SKIPPED: 0 } as Record<StepResult["status"], number>
   );
-  console.log(`🏁 Run ${runId} finished: OK=${counts.OK} FAIL=${counts.FAIL} SKIPPED=${counts.SKIPPED}`);
+  console.log(`ðŸ Run ${runId} finished: OK=${counts.OK} FAIL=${counts.FAIL} SKIPPED=${counts.SKIPPED}`);
 }
 
 function describeStep(step: PlanStep): string {
@@ -364,6 +840,7 @@ function renderArtifacts(outputs: Record<string, unknown>): string {
   addArtifactLink(links, stepDir, outputs.query, "query");
   addArtifactLink(links, stepDir, outputs.result, "result");
   addArtifactLink(links, stepDir, outputs.evidence, "evidence");
+  addArtifactLink(links, stepDir, outputs.file, "file");
   addArtifactLink(links, stepDir, outputs.stdout, "stdout");
   addArtifactLink(links, stepDir, outputs.stderr, "stderr");
   return links.length > 0 ? links.join("") : "-";
@@ -421,3 +898,4 @@ async function finalizeStep(
   };
   await fs.writeFile(path.join(stepDir, "metadata.json"), JSON.stringify(result, null, 2), "utf-8");
 }
+

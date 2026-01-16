@@ -1,0 +1,21 @@
+{
+  "metadata": {
+    "feature": "sqlite-basic",
+    "ticket": "SQL-001",
+    "env": "local"
+  },
+  "steps": [
+    {
+      "id": "query-users",
+      "type": "sqlEvidence",
+      "config": {
+        "sql": {
+          "adapter": "sqlite",
+          "dbPath": "examples/sqlite-basic/sample.db",
+          "query": "select id, name, active from users where active = 1;",
+          "expectRows": 2
+        }
+      }
+    }
+  ]
+}

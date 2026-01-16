@@ -7,3 +7,6 @@ index.html
 examples/**/temp/
 examples/**/screenshots/
 examples/**/runs/
+.cache/
+frontend/node_modules
+public/dashboard/

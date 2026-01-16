@@ -18,6 +18,13 @@ This file maps backlog goals to automated tests.
 - exports via responseText/stdout/stderr: `tests/p2-exports.spec.ts`
 - e2e flow (CLI pipeline -> SQL -> browser): `tests/p2-e2e.spec.ts`
 - captura com tiles horizontais: `tests/p2-browser-capture.spec.ts`
+- execucao por range: `tests/p2-run-range.spec.ts`
+- cache de steps: `tests/p2-cache.spec.ts`
+- inputs (defaults/overrides/env): `tests/p2-inputs.spec.ts`
+- loop de tarefas: `tests/p2-loop.spec.ts`
+- browser reuseSession: `tests/p2-browser-reuse.spec.ts`
+- specialist writeFile: `tests/p2-specialist.spec.ts`
+- dashboard e2e headless: `tests/p2-dashboard-e2e.spec.ts`
 
 ## P3 - API com Curl
 - parse/interpolacao de curl + execucao: `tests/p2-api.spec.ts`

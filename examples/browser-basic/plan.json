@@ -1,0 +1,15 @@
+{
+  "metadata": {
+    "feature": "browser-basic",
+    "ticket": "WEB-001",
+    "env": "local"
+  },
+  "behaviorsPath": "behaviors.json",
+  "steps": [
+    {
+      "id": "open-example",
+      "type": "browser",
+      "behaviorId": "open-example"
+    }
+  ]
+}

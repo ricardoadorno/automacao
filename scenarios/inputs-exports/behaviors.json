@@ -1,0 +1,11 @@
+{
+  "behaviors": {
+    "open-example": {
+      "actions": [
+        { "type": "goto", "url": "https://example.com" },
+        { "type": "waitForSelector", "selector": "h1", "state": "visible" },
+        { "type": "search", "text": "Example Domain" }
+      ]
+    }
+  }
+}

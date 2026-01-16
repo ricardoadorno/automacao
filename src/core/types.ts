@@ -1,6 +1,6 @@
 import { Context } from "./context";
 
-export type StepType = "browser" | "api" | "sqlEvidence" | "cli";
+export type StepType = "browser" | "api" | "sqlEvidence" | "cli" | "specialist";
 
 export type ExportRule =
   | {
@@ -74,6 +74,11 @@ export interface StepConfig {
       database: string;
     };
   };
+  specialist?: {
+    task: "writeFile";
+    outputPath: string;
+    content: string;
+  };
 }
 
 export interface PlanMetadata {
@@ -90,6 +95,11 @@ export interface PlanStep {
   exports?: Record<string, ExportRule>;
   requires?: string[];
   config?: StepConfig;
+  cache?: boolean;
+  loop?: {
+    items?: Context[];
+    usePlanItems?: boolean;
+  };
 }
 
 export interface Plan {
@@ -100,6 +110,16 @@ export interface Plan {
   behaviorsPath?: string;
   curlPath?: string;
   sqlPresetsPath?: string;
+  cache?: {
+    enabled?: boolean;
+    dir?: string;
+  };
+  inputs?: {
+    defaults?: Context;
+    overrides?: Context;
+    envPrefix?: string;
+    items?: Context[];
+  };
   browser?: {
     channel?: "chrome" | "msedge";
     headless?: boolean;
@@ -109,6 +129,7 @@ export interface Plan {
       height: number;
       deviceScaleFactor?: number;
     };
+    reuseSession?: boolean;
   };
 }
 

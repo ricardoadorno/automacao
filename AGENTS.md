@@ -5,10 +5,15 @@ This guide describes how to work in this repository. Keep changes small, follow 
 ## Project Structure & Module Organization
 
 - `src/`: TypeScript source code (runner, steps, helpers).
+- `frontend/`: React dashboard (Vite build).
 - `tests/`: Vitest tests, named by priority (`p0-*.spec.ts`, `p1-*.spec.ts`, etc.).
 - `README.md`: product and TDD roadmap.
+- `scenarios/`: real-world plans and flows (primary).
+- `examples/`: demo plans and quick references.
+- `docs/howto/`: end-user documentation and guides.
+- `docs/decisions/`: implementation decisions.
 - `package.json`, `tsconfig.json`: build and runtime configuration.
-- `scripts/`: dashboard and auxiliary tooling.
+- `scripts/`: dashboard server and auxiliary tooling.
 
 ## Build, Test, and Development Commands
 
@@ -16,12 +21,14 @@ This guide describes how to work in this repository. Keep changes small, follow 
   - Compiles TypeScript and runs the CLI executor.
 - `npm run dashboard`
   - Starts the GUI dashboard for running plans and browsing results.
+- `npm --prefix frontend run build`
+  - Builds the React dashboard into `public/dashboard`.
 - `npm test`
   - Runs Vitest in node mode.
 
 Example plan run:
 ```
-npm start -- --plan examples/api/plan.json --out runs
+npm start -- --plan scenarios/full-flow/plan.json --out runs
 ```
 
 ## Coding Style & Naming Conventions
@@ -39,6 +46,7 @@ npm start -- --plan examples/api/plan.json --out runs
 - Test naming: `tests/<priority>-<topic>.spec.ts`.
 - Cover business rules (e.g., failPolicy, exports, SQL evidence).
 - Use mocks for Playwright to keep tests fast and deterministic.
+- Update dashboard e2e tests when UI selectors change.
 
 Run all tests:
 ```

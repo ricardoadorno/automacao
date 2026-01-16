@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "feature": "cli-basic",
+    "ticket": "CLI-001",
+    "env": "local"
+  },
+  "steps": [
+    {
+      "id": "hello-cli",
+      "type": "cli",
+      "config": {
+        "cli": {
+          "command": "node",
+          "args": ["-e", "console.log('hello from cli')"]
+        }
+      }
+    }
+  ]
+}
