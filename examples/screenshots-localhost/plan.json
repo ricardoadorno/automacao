@@ -1,0 +1,131 @@
+{
+  "metadata": {
+    "feature": "screenshots-localhost",
+    "ticket": "WEB-PRINT-001",
+    "env": "local"
+  },
+  "behaviorsPath": "behaviors.json",
+  "browser": {
+    "headless": true
+  },
+  "inputs": {
+    "defaults": {
+      "baseUrl": "http://localhost:3000",
+      "tabPlansSelector": "[data-testid=\"tab-plans\"]",
+      "tabExamplesSelector": "[data-testid=\"tab-examples\"]",
+      "tabExecutionsSelector": "[data-testid=\"tab-executions\"]",
+      "tabRunsSelector": "[data-testid=\"tab-runs\"]",
+      "tabReportsSelector": "[data-testid=\"tab-reports\"]",
+      "tabTriggersSelector": "[data-testid=\"tab-triggers\"]",
+      "plansGridSelector": "[data-testid=\"plans-grid\"]",
+      "planCardSelector": "[data-testid=\"plan-card\"]",
+      "planModalSelector": ".modal-backdrop .modal",
+      "executionsReadySelector": "text=Executions",
+      "runsReadySelector": "text=Runs",
+      "reportsReadySelector": "text=Reports",
+      "triggersReadySelector": "[data-testid=\"trigger-form\"]",
+      "reportsAddEvidenceSelector": "text=Add evidence",
+      "reportsChooseEvidenceSelector": "text=Choose evidence",
+      "reportEvidenceModalSelector": ".report-evidence-modal"
+    },
+    "envPrefix": "AUTO_"
+  },
+  "steps": [
+    {
+      "id": "planos-lista",
+      "label": "Planos - Lista",
+      "type": "browser",
+      "behaviorId": "planos-lista",
+      "config": {
+        "browser": {
+          "viewport": { "width": 1440, "height": 900 },
+          "capture": { "mode": "full" }
+        }
+      }
+    },
+    {
+      "id": "plano-detalhe-modal",
+      "label": "Planos - Detalhe",
+      "type": "browser",
+      "behaviorId": "plano-detalhe-modal",
+      "config": {
+        "browser": {
+          "viewport": { "width": 1440, "height": 900 },
+          "capture": { "mode": "full" }
+        }
+      }
+    },
+    {
+      "id": "exemplos-lista",
+      "label": "Exemplos - Lista",
+      "type": "browser",
+      "behaviorId": "exemplos-lista",
+      "config": {
+        "browser": {
+          "viewport": { "width": 1440, "height": 900 },
+          "capture": { "mode": "full" }
+        }
+      }
+    },
+    {
+      "id": "execucoes",
+      "label": "Execucoes",
+      "type": "browser",
+      "behaviorId": "execucoes",
+      "config": {
+        "browser": {
+          "viewport": { "width": 1440, "height": 900 },
+          "capture": { "mode": "full" }
+        }
+      }
+    },
+    {
+      "id": "runs",
+      "label": "Runs",
+      "type": "browser",
+      "behaviorId": "runs",
+      "config": {
+        "browser": {
+          "viewport": { "width": 1440, "height": 900 },
+          "capture": { "mode": "full" }
+        }
+      }
+    },
+    {
+      "id": "relatorios",
+      "label": "Relatorios",
+      "type": "browser",
+      "behaviorId": "relatorios",
+      "config": {
+        "browser": {
+          "viewport": { "width": 1440, "height": 900 },
+          "capture": { "mode": "full" }
+        }
+      }
+    },
+    {
+      "id": "relatorio-evidencia-modal",
+      "label": "Relatorios - Evidencias",
+      "type": "browser",
+      "behaviorId": "relatorio-evidencia-modal",
+      "config": {
+        "browser": {
+          "viewport": { "width": 1440, "height": 900 },
+          "capture": { "mode": "full" }
+        }
+      }
+    },
+    {
+      "id": "gatilhos",
+      "label": "Gatilhos",
+      "type": "browser",
+      "behaviorId": "gatilhos",
+      "config": {
+        "browser": {
+          "viewport": { "width": 1440, "height": 900 },
+          "capture": { "mode": "full" }
+        }
+      }
+    }
+  ]
+}

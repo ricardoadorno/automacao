@@ -7,6 +7,8 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "incremental": true,
+    "tsBuildInfoFile": ".cache/tsbuildinfo",
     "types": ["node"]
   },
   "include": ["src/**/*.ts"]

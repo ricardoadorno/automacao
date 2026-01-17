@@ -127,8 +127,12 @@ export async function executeSqlEvidenceStep(
   const evidenceHtmlPath = path.join(stepDir, "evidence.html");
   const evidenceHtml = buildEvidenceHtml(parsed, {
     queryText,
+    queryFile,
+    resultFile,
     executedAt,
-    description: step.description
+    description: step.description,
+    stepId: step.id ?? step.type,
+    stepType: step.type
   });
   await fs.writeFile(evidenceHtmlPath, evidenceHtml, "utf-8");
   const evidenceFile = path.basename(evidenceHtmlPath);
@@ -208,7 +212,15 @@ function toRowsData(parsed: ParsedResult): Array<Record<string, string>> {
 
 function buildEvidenceHtml(
   parsed: ParsedResult,
-  meta: { queryText: string; executedAt: string; description?: string }
+  meta: {
+    queryText: string;
+    queryFile: string;
+    resultFile: string;
+    executedAt: string;
+    description?: string;
+    stepId: string;
+    stepType: string;
+  }
 ): string {
   const tableName = extractTableName(meta.queryText);
   const rowsData = parsed.type === "json"
@@ -228,8 +240,21 @@ function buildEvidenceHtml(
     ? `<div class="description">${escapeHtml(meta.description)}</div>`
     : "";
 
+  const toolbar = `
+    <div class="toolbar">
+      <a class="btn" href="${escapeHtml(meta.queryFile)}" download>Download query</a>
+      <a class="btn" href="${escapeHtml(meta.resultFile)}" download>Download result</a>
+      <a class="btn secondary" href="evidence.html" download="evidence.html">Download HTML</a>
+      <a class="btn secondary" href="screenshot.png" download="screenshot.png">Download screenshot</a>
+    </div>
+  `;
+
   const body = `
     <div class="summary">
+      <div class="summary-line">
+        <span class="summary-label">Step</span>${escapeHtml(meta.stepId)}
+        <span class="summary-label">Type</span>${escapeHtml(meta.stepType)}
+      </div>
       <div class="summary-line">
         <span class="summary-label">Rows</span>${rowCount}
         ${tableName ? `<span class="summary-label">Table</span>${escapeHtml(tableName)}` : ""}
@@ -241,6 +266,7 @@ function buildEvidenceHtml(
         <span class="summary-label">Query</span>${escapeHtml(meta.queryText.trim())}
       </div>
     </div>
+    ${toolbar}
     ${descriptionBlock}
     <section class="section">
       ${table}
@@ -349,6 +375,9 @@ function wrapHtml(body: string): string {
     .summary-line:last-child { margin-bottom: 0; }
     .summary-label { color: #6a6f76; text-transform: uppercase; letter-spacing: 0.4px; font-size: 10px; margin-right: 4px; }
     .description { padding: 8px 10px; border-radius: 8px; background: #fff7db; border: 1px solid #f0e0a8; font-size: 11px; margin-bottom: 8px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+    .btn { border: 1px solid #d0c9bc; background: #f7f4ee; color: #1f2328; padding: 6px 10px; border-radius: 8px; font-size: 10px; text-decoration: none; text-transform: uppercase; letter-spacing: 0.4px; }
+    .btn.secondary { background: #fff; }
     .section { background: #fff; border: 1px solid #e4dfd5; border-radius: 10px; padding: 10px; margin-bottom: 10px; box-shadow: 0 6px 14px rgba(22, 24, 27, 0.06); }
     .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e1dbcf; }
     .result-table { border-collapse: collapse; width: 100%; font-size: 11px; }

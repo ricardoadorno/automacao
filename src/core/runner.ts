@@ -1,4 +1,4 @@
-﻿import { promises as fs } from "fs";
+﻿import { existsSync, promises as fs } from "fs";
 import { createHash } from "crypto";
 import path from "path";
 import { loadBehaviors } from "../domains/browser/behaviors";
@@ -31,8 +31,11 @@ export async function executePlan(
   const runId = createRunId();
   const runDir = path.resolve(outDir, runId);
   const stepsDir = path.join(runDir, "steps");
-  const behaviors = plan.behaviorsPath ? await loadBehaviors(plan.behaviorsPath) : null;
-  const curlPath = plan.curlPath ?? "";
+  const behaviorsPath = plan.behaviorsPath
+    ? resolveAssetPath(plan.behaviorsPath, options.planPath)
+    : "";
+  const behaviors = behaviorsPath ? await loadBehaviors(behaviorsPath) : null;
+  const curlPath = plan.curlPath ? resolveAssetPath(plan.curlPath, options.planPath) : "";
   const runStartedAt = nowIso();
   const totalSteps = plan.steps.length;
   const cacheRoot = resolveCacheRoot(plan);
@@ -218,9 +221,21 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
     resolvedStep = resolveTemplatesDeep(step, iterationContext);
 
     const cacheEnabled = shouldUseCache(cacheRoot, resolvedStep);
-    const cacheKey = cacheEnabled
-      ? await buildCacheKey(resolvedStep, plan, behaviors, iterationContext, loopInfo?.item ?? null)
+    const cacheInfo = cacheEnabled
+      ? await buildCacheInfo(
+          resolvedStep,
+          plan,
+          behaviors,
+          iterationContext,
+          loopInfo?.item ?? null,
+          curlPath
+        )
       : null;
+    const cacheKey = cacheInfo?.key ?? null;
+    if (cacheInfo) {
+      outputs.cacheKey = cacheInfo.key;
+      outputs.cacheInputs = cacheInfo.inputs;
+    }
     if (cacheEnabled && cacheKey) {
       const cacheHit = await readCacheEntry(cacheRoot, cacheKey);
       if (cacheHit) {
@@ -230,17 +245,22 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
         status = "SKIPPED";
         notes = "cache hit";
         outputs.cacheHit = true;
+        outputs.cacheReason = "cache hit";
         outputs.loopIndex = loopInfo ? loopInfo.index + 1 : undefined;
         outputs.loopTotal = loopInfo ? loopInfo.total : undefined;
         outputs.loopItem = loopInfo ? loopInfo.item : undefined;
         Object.assign(outputs, cachedOutputs ?? {});
+        if (cacheHit.inputs) {
+          outputs.cacheInputs = cacheHit.inputs;
+        }
         outputs.stepDir = `steps/${stepDirName}`;
         durationMs = Date.now() - stepStartMs;
         outputs.durationMs = durationMs;
         if (cachedExports && resolvedStep.exports) {
           applyExports(context, resolvedStep.exports, cachedExports);
         }
-        logStepCacheHit(stepNumber, totalSteps, resolvedStep, durationMs, loopLabel);
+        const cacheInputsSummary = summarizeCacheInputs(cacheHit.inputs ?? cacheInfo?.inputs ?? null);
+        logStepCacheHit(stepNumber, totalSteps, resolvedStep, durationMs, cacheKey ?? "", cacheInputsSummary, loopLabel);
         await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, durationMs, notes);
         return {
           id: buildStepResultId(resolvedStep, loopInfo),
@@ -358,9 +378,17 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
     logStepSuccess(stepNumber, totalSteps, resolvedStep, outputs, durationMs, loopLabel);
 
     if (shouldUseCache(cacheRoot, resolvedStep)) {
-      const cacheKey = await buildCacheKey(resolvedStep, plan, behaviors, iterationContext, loopInfo?.item ?? null);
+      const cacheKey = cacheInfo?.key;
       if (cacheKey) {
-        await writeCacheEntry(cacheRoot, cacheKey, resolvedStep, stepDir, outputs, cachedExports);
+        await writeCacheEntry(
+          cacheRoot,
+          cacheKey,
+          resolvedStep,
+          stepDir,
+          outputs,
+          cachedExports,
+          cacheInfo?.inputs ?? null
+        );
       }
     }
   } catch (error) {
@@ -517,6 +545,21 @@ function resolveCacheRoot(plan: Plan): string | null {
     : path.join(process.cwd(), ".cache", "steps");
   return root;
 }
+function resolveAssetPath(assetPath: string, planPath?: string | null): string {
+  if (path.isAbsolute(assetPath)) {
+    return assetPath;
+  }
+  const fromCwd = path.resolve(process.cwd(), assetPath);
+  if (existsSync(fromCwd)) {
+    return fromCwd;
+  }
+  if (planPath) {
+    const planDir = path.dirname(path.resolve(planPath));
+    return path.resolve(planDir, assetPath);
+  }
+  return path.resolve(assetPath);
+}
+
 
 function shouldUseCache(cacheRoot: string | null, step: PlanStep): boolean {
   if (!cacheRoot) {
@@ -528,13 +571,27 @@ function shouldUseCache(cacheRoot: string | null, step: PlanStep): boolean {
   return true;
 }
 
-async function buildCacheKey(
+async function buildCacheInfo(
   step: PlanStep,
   plan: Plan,
   behaviors: Awaited<ReturnType<typeof loadBehaviors>> | null,
   context: Context,
-  loopItem?: Context | null
-): Promise<string | null> {
+  loopItem?: Context | null,
+  curlPath?: string
+): Promise<{ key: string; inputs: Record<string, unknown> } | null> {
+  const inputs = await buildCachePayload(step, plan, behaviors, context, loopItem, curlPath);
+  const key = createHash("sha256").update(stableStringify(inputs)).digest("hex");
+  return { key, inputs };
+}
+
+async function buildCachePayload(
+  step: PlanStep,
+  plan: Plan,
+  behaviors: Awaited<ReturnType<typeof loadBehaviors>> | null,
+  context: Context,
+  loopItem?: Context | null,
+  curlPath?: string
+): Promise<Record<string, unknown>> {
   const payload: Record<string, unknown> = {
     step,
     failPolicy: plan.failPolicy ?? "stop",
@@ -546,8 +603,8 @@ async function buildCacheKey(
     payload.behavior = actions;
   }
 
-  if (step.type === "api" && plan.curlPath) {
-    const curlContent = await readFileSafe(plan.curlPath);
+  if (step.type === "api" && curlPath) {
+    const curlContent = await readFileSafe(curlPath);
     payload.curl = curlContent;
   }
 
@@ -570,8 +627,7 @@ async function buildCacheKey(
     payload.tabularViewer = tabular.viewer ?? null;
   }
 
-  const hash = createHash("sha256").update(stableStringify(payload)).digest("hex");
-  return hash;
+  return payload;
 }
 
 async function readFileSafe(filePath: string): Promise<string> {
@@ -625,7 +681,8 @@ async function writeCacheEntry(
   step: PlanStep,
   stepDir: string,
   outputs: Record<string, unknown>,
-  exportsPayload?: Record<string, unknown>
+  exportsPayload?: Record<string, unknown>,
+  cacheInputs?: Record<string, unknown> | null
 ): Promise<void> {
   if (!cacheRoot) {
     return;
@@ -651,6 +708,7 @@ async function writeCacheEntry(
     type: step.type,
     createdAt: nowIso(),
     outputs,
+    inputs: cacheInputs ?? null,
     exportsPayload: exportsPayload ?? null,
     artifacts
   };
@@ -702,23 +760,46 @@ function stableStringify(value: unknown): string {
   }
   return JSON.stringify(value);
 }
+function summarizeCacheInputs(inputs: Record<string, unknown> | null): string {
+  if (!inputs) {
+    return "";
+  }
+  const keys = Object.keys(inputs);
+  return keys.length > 0 ? keys.join(",") : "";
+}
+
 
 function logStepCacheHit(
   index: number,
   total: number,
   step: PlanStep,
   durationMs: number,
+  cacheKey: string,
+  cacheInputsSummary: string,
   suffix = ""
 ): void {
   const label = step.id ?? step.type;
-  console.log(`Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} SKIPPED (cache) durationMs=${durationMs}`);
+  const cacheTag = cacheKey ? ` cacheKey=${cacheKey}` : "";
+  const inputsTag = cacheInputsSummary ? ` cacheInputs=${cacheInputsSummary}` : "";
+  console.log(`Step ${String(index).padStart(2, "0")}/${total} ${label}${suffix} SKIPPED (cache) durationMs=${durationMs}${cacheTag}${inputsTag}`);
 }
 
 function buildIndexHtml(summary: { runId: string; steps: StepResult[] }): string {
   const rows = summary.steps
     .map((step) => {
       const artifacts = renderArtifacts(step.outputs);
-      return `<tr><td>${step.id}</td><td>${step.type}</td><td>${step.status}</td><td>${artifacts}</td></tr>`;
+      const statusClass =
+        step.status === "OK" ? "ok" : step.status === "FAIL" ? "fail" : "skipped";
+      return `<tr>
+        <td>
+          <div class="step-cell">
+            <span class="step-id">${escapeHtml(step.id ?? "-")}</span>
+            <span class="step-type">${escapeHtml(step.type)}</span>
+          </div>
+        </td>
+        <td><span class="status status--${statusClass}">${escapeHtml(step.status)}</span></td>
+        <td>${artifacts}</td>
+      </tr>`;
     })
     .join("");
 
@@ -728,23 +809,285 @@ function buildIndexHtml(summary: { runId: string; steps: StepResult[] }): string
   <meta charset="utf-8" />
   <title>Run ${summary.runId}</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 24px; }
-    table { border-collapse: collapse; width: 100%; }
-    td, th { border: 1px solid #ccc; padding: 8px; }
-    th { background: #f5f5f5; text-align: left; }
-    td .artifact { margin-right: 8px; display: inline-block; }
+    :root {
+      --color-primary: #FFC107;
+      --color-primary-hover: #EBB006;
+      --color-navy: #005696;
+      --color-navy-dark: #003D6B;
+      --color-bg: #F5F7FA;
+      --color-surface: #FFFFFF;
+      --color-border: #E0E0E0;
+      --color-text-main: #212121;
+      --color-text-secondary: #616161;
+      --color-success: #28A745;
+      --color-error: #DC3545;
+      --color-warning: #FF9800;
+      --font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-size-h1: 24px;
+      --font-size-h2: 18px;
+      --font-size-body: 14px;
+      --font-size-small: 12px;
+      --font-weight-bold: 700;
+      --font-weight-regular: 400;
+      --spacing-xs: 4px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+      --spacing-xl: 32px;
+      --radius-md: 8px;
+      --radius-sm: 4px;
+      --shadow-subtle: 0 2px 8px rgba(0, 0, 0, 0.05);
+      --shadow-modal: 0 10px 25px rgba(0, 0, 0, 0.2);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--font-family);
+      font-size: var(--font-size-body);
+      background: var(--color-bg);
+      color: var(--color-text-main);
+    }
+
+    header {
+      background: var(--color-navy);
+      color: #FFFFFF;
+      padding: var(--spacing-lg);
+    }
+
+    header h1 {
+      margin: 0 0 var(--spacing-xs);
+      font-size: var(--font-size-h1);
+    }
+
+    header p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: var(--font-size-small);
+    }
+
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: var(--spacing-lg);
+    }
+
+    .card {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-subtle);
+      padding: var(--spacing-md);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--font-size-body);
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--color-border);
+      vertical-align: top;
+    }
+
+    th {
+      font-size: var(--font-size-small);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--color-text-secondary);
+      background: #FAFAFA;
+    }
+
+    .step-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .step-id {
+      font-weight: var(--font-weight-bold);
+      color: var(--color-navy);
+    }
+
+    .step-type {
+      font-size: var(--font-size-small);
+      color: var(--color-text-secondary);
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: var(--font-weight-bold);
+      text-transform: uppercase;
+    }
+
+    .status--ok { background: #E8F5E9; color: var(--color-success); }
+    .status--fail { background: #FFEBEE; color: var(--color-error); }
+    .status--skipped { background: #FFF3E0; color: var(--color-warning); }
+
+    .artifact-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--spacing-sm);
+    }
+
+    .artifact-card {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      background: #FFFFFF;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 160px;
+    }
+
+    .artifact-title {
+      font-size: var(--font-size-small);
+      font-weight: var(--font-weight-bold);
+      color: var(--color-text-main);
+    }
+
+    .artifact-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      font-family: var(--font-family);
+      font-weight: var(--font-weight-bold);
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .btn--primary { background: var(--color-primary); color: var(--color-navy); }
+    .btn--primary:hover { background: var(--color-primary-hover); }
+    .btn--secondary { background: transparent; border: 1px solid var(--color-border); color: var(--color-text-main); }
+    .btn--ghost { background: transparent; color: var(--color-navy); padding: 4px 8px; }
+    .btn--ghost:hover { text-decoration: underline; }
+
+    .muted { color: var(--color-text-secondary); font-size: var(--font-size-small); }
+
+    .preview-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 61, 107, 0.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 9999;
+    }
+
+    .preview-modal.is-open { display: flex; }
+
+    .preview-card {
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-modal);
+      padding: var(--spacing-md);
+      max-width: min(960px, 92vw);
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-sm);
+    }
+
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--spacing-sm);
+    }
+
+    .preview-image {
+      width: 100%;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border);
+      max-height: 70vh;
+      object-fit: contain;
+    }
+
+    @media (max-width: 720px) {
+      header { padding: var(--spacing-md); }
+      main { padding: var(--spacing-md); }
+      th, td { padding: 10px 8px; }
+    }
   </style>
 </head>
 <body>
-  <h1>Run ${summary.runId}</h1>
-  <table>
-    <thead>
-      <tr><th>Step</th><th>Type</th><th>Status</th><th>Artifacts</th></tr>
-    </thead>
-    <tbody>
-      ${rows}
-    </tbody>
-  </table>
+  <header>
+    <h1>Run ${summary.runId}</h1>
+    <p>Resumo dos passos e artefatos gerados.</p>
+  </header>
+  <main>
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>Passo</th><th>Status</th><th>Artefatos</th></tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <div class="preview-modal" id="preview-modal">
+    <div class="preview-card">
+      <div class="preview-header">
+        <strong id="preview-title">Visualizar</strong>
+        <button class="btn btn--ghost" id="preview-close" type="button">Fechar</button>
+      </div>
+      <img class="preview-image" id="preview-image" alt="Preview" />
+    </div>
+  </div>
+
+  <script>
+    const modal = document.getElementById("preview-modal");
+    const image = document.getElementById("preview-image");
+    const title = document.getElementById("preview-title");
+    const closeBtn = document.getElementById("preview-close");
+
+    function closePreview() {
+      modal.classList.remove("is-open");
+      image.src = "";
+      title.textContent = "Visualizar";
+    }
+
+    document.querySelectorAll("[data-preview]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const src = button.getAttribute("data-preview");
+        const label = button.getAttribute("data-label") || "Visualizar";
+        if (!src) return;
+        image.src = src;
+        title.textContent = label;
+        modal.classList.add("is-open");
+      });
+    });
+
+    closeBtn.addEventListener("click", closePreview);
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) closePreview();
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -921,49 +1264,101 @@ function renderArtifacts(outputs: Record<string, unknown>): string {
   if (!stepDir) {
     return "-";
   }
-  const links: string[] = [];
-  addArtifactLink(links, stepDir, outputs.screenshot, "screenshot");
-  addArtifactLinks(links, stepDir, outputs.screenshots, "screenshot");
-  addArtifactLink(links, stepDir, outputs.query, "query");
-  addArtifactLink(links, stepDir, outputs.result, "result");
-  addArtifactLink(links, stepDir, outputs.evidence, "evidence");
-  addArtifactLink(links, stepDir, outputs.viewer, "viewer");
-  addArtifactLink(links, stepDir, outputs.source, "source");
-  addArtifactLink(links, stepDir, outputs.file, "file");
-  addArtifactLink(links, stepDir, outputs.stdout, "stdout");
-  addArtifactLink(links, stepDir, outputs.stderr, "stderr");
-  return links.length > 0 ? links.join("") : "-";
+  const items: Array<{
+    label: string;
+    href: string;
+    filename: string;
+    kind: "image" | "file";
+  }> = [];
+  addArtifactItem(items, stepDir, outputs.screenshot, "Captura", "image");
+  addArtifactItems(items, stepDir, outputs.screenshots, "Captura", "image");
+  addArtifactItem(items, stepDir, outputs.query, "Consulta", "file");
+  addArtifactItem(items, stepDir, outputs.result, "Resultado", "file");
+  addArtifactItem(items, stepDir, outputs.evidence, "Evidencia", "file");
+  addArtifactItem(items, stepDir, outputs.viewer, "Visualizador", "file");
+  addArtifactItem(items, stepDir, outputs.source, "Fonte", "file");
+  addArtifactItem(items, stepDir, outputs.file, "Arquivo", "file");
+  addArtifactItem(items, stepDir, outputs.stdout, "Saida", "file");
+  addArtifactItem(items, stepDir, outputs.stderr, "Erro", "file");
+
+  if (items.length === 0) {
+    return '<span class="muted">-</span>';
+  }
+
+  return `<div class="artifact-list">
+    ${items.map((item) => renderArtifactCard(item)).join("")}
+  </div>`;
 }
 
-function addArtifactLink(
-  links: string[],
+function addArtifactItem(
+  items: Array<{ label: string; href: string; filename: string; kind: "image" | "file" }>,
   stepDir: string,
   filename: unknown,
-  label: string
+  label: string,
+  kind: "image" | "file"
 ): void {
   if (typeof filename !== "string" || filename.length === 0) {
     return;
   }
-  const href = `${stepDir}/${filename}`;
-  links.push(`<a class="artifact" href="${href}">${label}</a>`);
+  items.push({
+    label,
+    href: `${stepDir}/${filename}`,
+    filename,
+    kind
+  });
 }
 
-function addArtifactLinks(
-  links: string[],
+function addArtifactItems(
+  items: Array<{ label: string; href: string; filename: string; kind: "image" | "file" }>,
   stepDir: string,
   filenames: unknown,
-  label: string
+  label: string,
+  kind: "image" | "file"
 ): void {
   if (!Array.isArray(filenames)) {
     return;
   }
-  for (const name of filenames) {
+  filenames.forEach((name, idx) => {
     if (typeof name !== "string" || name.length === 0) {
-      continue;
+      return;
     }
-    const href = `${stepDir}/${name}`;
-    links.push(`<a class="artifact" href="${href}">${label}</a>`);
-  }
+    items.push({
+      label: `${label} ${idx + 1}`,
+      href: `${stepDir}/${name}`,
+      filename: name,
+      kind
+    });
+  });
+}
+
+function renderArtifactCard(item: {
+  label: string;
+  href: string;
+  filename: string;
+  kind: "image" | "file";
+}): string {
+  const safeLabel = escapeHtml(item.label);
+  const safeFilename = escapeHtml(item.filename);
+  const previewButton =
+    item.kind === "image"
+      ? `<button class="btn btn--ghost" type="button" data-preview="${item.href}" data-label="${safeLabel}">Visualizar</button>`
+      : `<a class="btn btn--ghost" href="${item.href}" target="_blank" rel="noreferrer">Abrir</a>`;
+  return `<div class="artifact-card">
+    <div class="artifact-title">${safeLabel}</div>
+    <div class="artifact-actions">
+      ${previewButton}
+      <a class="btn btn--secondary" href="${item.href}" download="${safeFilename}">Baixar</a>
+    </div>
+  </div>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function buildLoopSummary(results: StepResult[]) {

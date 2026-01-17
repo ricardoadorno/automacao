@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { PlanDetail } from "./components/PlanDetail";
+import { AppShell, Button, Sidebar, Topbar } from "./design-system";
 import {
   parseItemsRows,
   rowsToObject,
@@ -21,7 +23,28 @@ import {
 
 type TabKey = "plans" | "examples" | "executions" | "runs" | "reports" | "triggers";
 
-type Toast = { message: string; tone?: "success" | "error" | "info" } | null;
+type ToastTone = "success" | "error" | "info" | "warning";
+type Toast = {
+  title: string;
+  message: string;
+  tone: ToastTone;
+  durationMs: number;
+} | null;
+
+const tabPaths: Record<TabKey, string> = {
+  plans: "/plans",
+  examples: "/examples",
+  executions: "/executions",
+  runs: "/runs",
+  reports: "/reports",
+  triggers: "/triggers"
+};
+
+function tabFromPath(pathname: string): TabKey {
+  const entries = Object.entries(tabPaths) as Array<[TabKey, string]>;
+  const match = entries.find(([, path]) => pathname.startsWith(path));
+  return match ? match[0] : "plans";
+}
 
 async function apiFetch<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, init);
@@ -34,7 +57,10 @@ async function apiFetch<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
 }
 
 export default function App() {
-  const [tab, setTab] = useState<TabKey>("plans");
+  const location = useLocation();
+  const navigate = useNavigate();
+  const tab = useMemo(() => tabFromPath(location.pathname), [location.pathname]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [plansLoading, setPlansLoading] = useState(false);
@@ -70,7 +96,9 @@ export default function App() {
     filename?: string;
   }>({ open: false });
   const [evidenceSearch, setEvidenceSearch] = useState("");
-  const [logFilters, setLogFilters] = useState<Record<string, { text: string; level: "all" | "error" }>>({});
+  const [logFilters, setLogFilters] = useState<Record<string, { level: "all" | "error" }>>({});
+  const [minimizedExecutions, setMinimizedExecutions] = useState<Record<string, boolean>>({});
+  const [stepsMinimized, setStepsMinimized] = useState<Record<string, boolean>>({});
   const [triggerForm, setTriggerForm] = useState({
     name: "",
     provider: "eventbridge",
@@ -78,6 +106,7 @@ export default function App() {
     logsUrl: ""
   });
   const pollersRef = useRef<Record<string, number>>({});
+  const streamRefs = useRef<Record<string, EventSource>>({});
   const triggersPollerRef = useRef<number | null>(null);
 
   const hasExecutions = useMemo(() => Object.keys(executions).length > 0, [executions]);
@@ -101,9 +130,21 @@ export default function App() {
   }, [tab, runsPage, runsPageSize]);
 
   useEffect(() => {
+    if (location.pathname === "/") {
+      navigate(tabPaths.plans, { replace: true });
+    }
+  }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
     return () => {
       Object.values(pollersRef.current).forEach((id) => clearInterval(id));
       pollersRef.current = {};
+      Object.values(streamRefs.current).forEach((source) => source.close());
+      streamRefs.current = {};
       if (triggersPollerRef.current) {
         clearInterval(triggersPollerRef.current);
         triggersPollerRef.current = null;
@@ -288,9 +329,10 @@ export default function App() {
       setExecutions((current) => ({ ...current, [execution.executionId]: execution }));
       showToast({ message: "Execution started", tone: "success" });
       if (options.switchTab !== false) {
-        setTab("executions");
+        goToTab("executions");
       }
       startPolling(execution.executionId);
+      startStream(execution.executionId);
     } catch (error) {
       showToast(error);
     }
@@ -315,6 +357,49 @@ export default function App() {
       }
     }, 2000);
     pollersRef.current[executionId] = timerId;
+  }
+
+  function startStream(executionId: string) {
+    if (streamRefs.current[executionId] || typeof EventSource === "undefined") {
+      return;
+    }
+    const source = new EventSource(`/api/execution-stream?id=${encodeURIComponent(executionId)}`);
+    streamRefs.current[executionId] = source;
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as { type: string; text?: string; status?: string };
+        if (payload.type === "log" && payload.text) {
+          setExecutions((current) => {
+            const existing = current[executionId];
+            if (!existing) {
+              return current;
+            }
+            const output = existing.output ? [...existing.output, payload.text] : [payload.text];
+            return { ...current, [executionId]: { ...existing, output } };
+          });
+        }
+        if (payload.type === "end") {
+          setExecutions((current) => {
+            const existing = current[executionId];
+            if (!existing) {
+              return current;
+            }
+            return {
+              ...current,
+              [executionId]: { ...existing, status: payload.status || existing.status }
+            };
+          });
+          source.close();
+          delete streamRefs.current[executionId];
+        }
+      } catch {
+        // ignore malformed events
+      }
+    };
+    source.onerror = () => {
+      source.close();
+      delete streamRefs.current[executionId];
+    };
   }
 
   async function loadRuns(page: number, pageSize: number) {
@@ -448,19 +533,60 @@ export default function App() {
   function showToast(value: unknown) {
     if (!value) return;
     if (value instanceof Error) {
-      setToast({ message: value.message, tone: "error" });
+      setToast({
+        title: "Erro",
+        message: value.message,
+        tone: "error",
+        durationMs: 7000
+      });
       return;
     }
     if (typeof value === "string") {
-      setToast({ message: value, tone: "info" });
+      setToast({
+        title: "Informacao",
+        message: value,
+        tone: "info",
+        durationMs: 5000
+      });
       return;
     }
     if (typeof value === "object" && value && "message" in value) {
-      const message = String((value as { message?: string }).message || "");
-      setToast({ message, tone: "info" });
+      const payload = value as {
+        title?: string;
+        message?: string;
+        tone?: ToastTone;
+        durationMs?: number;
+      };
+      const tone = payload.tone ?? "info";
+      const title =
+        payload.title ??
+        (tone === "error" ? "Erro" : tone === "success" ? "Sucesso" : tone === "warning" ? "Aviso" : "Informacao");
+      const message = String(payload.message ?? "");
+      setToast({
+        title,
+        message,
+        tone,
+        durationMs: payload.durationMs ?? (tone === "error" ? 7000 : 5000)
+      });
       return;
     }
-    setToast({ message: "Done", tone: "info" });
+    setToast({
+      title: "Informacao",
+      message: "Concluido",
+      tone: "info",
+      durationMs: 4000
+    });
+  }
+
+  useEffect(() => {
+    if (!toast) return;
+    if (toast.durationMs <= 0) return;
+    const timerId = window.setTimeout(() => setToast(null), toast.durationMs);
+    return () => window.clearTimeout(timerId);
+  }, [toast]);
+
+  function goToTab(next: TabKey) {
+    navigate(tabPaths[next]);
   }
 
   function addReportBlock(type: ReportBlock["type"]) {
@@ -699,38 +825,84 @@ export default function App() {
   const totalPages = Math.max(1, Math.ceil(runsTotal / runsPageSize));
   const filteredPlans = filterPlans(plans, planFilter);
   const filteredExamples = filterPlans(examples, exampleFilter);
+  const executionList = Object.values(executions).sort((a, b) => {
+    const aRunning = a.status === "running";
+    const bRunning = b.status === "running";
+    if (aRunning !== bRunning) return aRunning ? -1 : 1;
+    return (b.startedAt || "").localeCompare(a.startedAt || "");
+  });
+  const focusExecutionId = executionList.find((execution) => execution.status === "running")?.executionId;
+
+  useEffect(() => {
+    if (executionList.length === 0) {
+      return;
+    }
+    setMinimizedExecutions((current) => {
+      const next = { ...current };
+      for (const execution of executionList) {
+        if (next[execution.executionId] !== undefined) {
+          continue;
+        }
+        next[execution.executionId] = focusExecutionId
+          ? execution.executionId !== focusExecutionId
+          : false;
+      }
+      return next;
+    });
+  }, [executionList, focusExecutionId]);
+  const navItems: Array<{ key: TabKey; label: string }> = [
+    { key: "plans", label: "Planos" },
+    { key: "examples", label: "Exemplos" },
+    { key: "executions", label: "Execucoes" },
+    { key: "runs", label: "Runs" },
+    { key: "reports", label: "Relatorios" },
+    { key: "triggers", label: "Gatilhos" }
+  ];
 
   return (
-    <div className="page">
-      <header className="header">
-        <div>
-          <p className="eyebrow">Automation Dashboard</p>
-          <h1>Plans, runs, and triggers in one place</h1>
-          <p className="subtitle">Run plans, watch executions, and manage triggers.</p>
-        </div>
-        <div className="header-actions">
-          <button className="ghost" onClick={() => setTab("plans")}>Plans</button>
-          <button className="ghost" onClick={() => setTab("examples")}>Examples</button>
-          <button className="ghost" onClick={() => setTab("executions")}>Executions</button>
-          <button className="ghost" onClick={() => setTab("runs")}>Runs</button>
-          <button className="ghost" onClick={() => setTab("reports")}>Reports</button>
-          <button className="ghost" onClick={() => setTab("triggers")}>Triggers</button>
-        </div>
-      </header>
-
-      <main className="content">
-        <nav className="tabs">
-          {["plans", "examples", "executions", "runs", "reports", "triggers"].map((key) => (
-            <button
-              key={key}
-              className={`tab ${tab === key ? "active" : ""}`}
-              onClick={() => setTab(key as TabKey)}
-              data-testid={`tab-${key}`}
+    <AppShell
+      topbar={(
+        <Topbar>
+          <div className="topbar__meta">
+            <p className="eyebrow">Dashboard de Automacao</p>
+            <h1 className="topbar__title">Planos, runs e gatilhos</h1>
+            <p className="topbar__subtitle">Execute planos, acompanhe execucoes e gerencie gatilhos.</p>
+          </div>
+          <div className="topbar__actions">
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              onClick={() => setSidebarOpen((current) => !current)}
+              aria-expanded={sidebarOpen}
+              aria-controls="app-sidebar"
+              className="topbar__menu"
             >
-              {key}
-            </button>
-          ))}
-        </nav>
+              Navegacao
+            </Button>
+          </div>
+        </Topbar>
+      )}
+      sidebar={(
+        <Sidebar className={sidebarOpen ? "is-open" : ""} id="app-sidebar">
+          <h2 className="sidebar__title">Navegacao</h2>
+          <nav className="sidebar__nav">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.key}
+                to={tabPaths[item.key]}
+                className={({ isActive }) => `sidebar__link ${isActive ? "is-active" : ""}`}
+                data-testid={`tab-${item.key}`}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+        </Sidebar>
+      )}
+    >
+      {sidebarOpen && <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />}
+      <div className="content">
 
         {tab === "plans" && (
           <section className="section">
@@ -739,9 +911,9 @@ export default function App() {
                 <h2>Scenarios</h2>
                 <p>Real workflows and production-like flows.</p>
               </div>
-              <button className="primary" onClick={() => loadPlans()} disabled={plansLoading}>
+              <Button variant="primary" onClick={() => loadPlans()} disabled={plansLoading}>
                 {plansLoading ? "Loading..." : "Refresh"}
-              </button>
+              </Button>
             </div>
             <div className="filter-bar">
               <input
@@ -749,7 +921,7 @@ export default function App() {
                 value={planFilter}
                 onChange={(event) => setPlanFilter(event.target.value)}
               />
-              <button className="ghost" onClick={() => setPlanFilter("")}>Clear</button>
+              <Button variant="ghost" size="sm" onClick={() => setPlanFilter("")}>Clear</Button>
             </div>
             {plansLoading ? (
               <div className="empty">Loading plans...</div>
@@ -765,6 +937,8 @@ export default function App() {
                     const typeCounts = getStepTypeCounts(plan.steps);
                     const flags = getPlanFlags(plan);
                     const rangeDraft = rangeDrafts[plan.path] || { from: "", to: "" };
+                    const validationErrors = plan.validationErrors ?? [];
+                    const hasValidationErrors = validationErrors.length > 0;
                     return (
                       <article
                         className={`card plan-card ${selectedSteps.length > 0 ? "selected" : ""}`}
@@ -777,6 +951,7 @@ export default function App() {
                               <h3>{plan.feature}</h3>
                               <span className="pill">{plan.stepsCount} steps</span>
                               <span className="pill scenario">scenario</span>
+                              {hasValidationErrors && <span className="pill error">invalid</span>}
                               {flags.map((flag) => (
                                 <span className="pill secondary" key={flag}>{flag}</span>
                               ))}
@@ -853,8 +1028,9 @@ export default function App() {
                               placeholder={String(plan.steps.length)}
                             />
                           </label>
-                          <button
-                            className="ghost"
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => {
                               const parsed = parseRangeDraft(plan.path, plan.steps.length);
                               if (parsed.error) {
@@ -869,16 +1045,17 @@ export default function App() {
                               }
                               void runPlan(plan.path, parsed.range, { inputs: payload.inputs });
                             }}
+                            disabled={hasValidationErrors}
                           >
                             Run range
-                          </button>
+                          </Button>
                         </div>
                         <div className="actions">
-                          <button className="ghost" onClick={() => selectPlan(plan.path)}>
+                          <Button variant="ghost" size="sm" onClick={() => selectPlan(plan.path)}>
                             View plan
-                          </button>
-                          <button
-                            className="primary"
+                          </Button>
+                          <Button
+                            variant="primary"
                             onClick={() => {
                               if (selectedSteps.length === 0) {
                                 showToast("Select at least one step");
@@ -895,9 +1072,10 @@ export default function App() {
                                 inputs: payload.inputs
                               });
                             }}
+                            disabled={hasValidationErrors}
                           >
                             Run selected steps
-                          </button>
+                          </Button>
                         </div>
                       </article>
                     );
@@ -950,9 +1128,9 @@ export default function App() {
                 <h2>Examples</h2>
                 <p>Sample plans for demos and quick checks.</p>
               </div>
-              <button className="primary" onClick={() => loadExamples()} disabled={examplesLoading}>
+              <Button variant="primary" onClick={() => loadExamples()} disabled={examplesLoading}>
                 {examplesLoading ? "Loading..." : "Refresh"}
-              </button>
+              </Button>
             </div>
             <div className="filter-bar">
               <input
@@ -960,7 +1138,7 @@ export default function App() {
                 value={exampleFilter}
                 onChange={(event) => setExampleFilter(event.target.value)}
               />
-              <button className="ghost" onClick={() => setExampleFilter("")}>Clear</button>
+              <Button variant="ghost" size="sm" onClick={() => setExampleFilter("")}>Clear</Button>
             </div>
             {examplesLoading ? (
               <div className="empty">Loading examples...</div>
@@ -972,6 +1150,8 @@ export default function App() {
                   const selectedSteps = getSelectedSteps(plan.path);
                   const typeCounts = getStepTypeCounts(plan.steps);
                   const rangeDraft = rangeDrafts[plan.path] || { from: "", to: "" };
+                  const validationErrors = plan.validationErrors ?? [];
+                  const hasValidationErrors = validationErrors.length > 0;
                   return (
                     <article className="card plan-card" data-testid="plan-card" key={plan.path}>
                       <div className="plan-top">
@@ -980,6 +1160,7 @@ export default function App() {
                             <h3>{plan.feature}</h3>
                             <span className="pill">{plan.stepsCount} steps</span>
                             <span className="pill example">example</span>
+                            {hasValidationErrors && <span className="pill error">invalid</span>}
                           </div>
                           <p className="muted">{plan.path}</p>
                         </div>
@@ -1008,8 +1189,9 @@ export default function App() {
                             placeholder={String(plan.steps.length)}
                           />
                         </label>
-                        <button
-                          className="ghost"
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => {
                             const parsed = parseRangeDraft(plan.path, plan.steps.length);
                             if (parsed.error) {
@@ -1024,16 +1206,17 @@ export default function App() {
                             }
                             void runPlan(plan.path, parsed.range, { inputs: payload.inputs });
                           }}
+                          disabled={hasValidationErrors}
                         >
                           Run range
-                        </button>
+                        </Button>
                       </div>
                       <div className="actions">
-                        <button className="ghost" onClick={() => selectPlan(plan.path)}>
+                        <Button variant="ghost" size="sm" onClick={() => selectPlan(plan.path)}>
                           View plan
-                        </button>
-                        <button
-                          className="primary"
+                        </Button>
+                        <Button
+                          variant="primary"
                           onClick={() => {
                             if (selectedSteps.length === 0) {
                               showToast("Select at least one step");
@@ -1041,9 +1224,10 @@ export default function App() {
                             }
                             void runPlan(plan.path, undefined, { selectedSteps });
                           }}
+                          disabled={hasValidationErrors}
                         >
                           Run selected steps
-                        </button>
+                        </Button>
                       </div>
                     </article>
                   );
@@ -1095,15 +1279,23 @@ export default function App() {
                 <h2>Executions</h2>
                 <p>Live status for running plans.</p>
               </div>
-              <button className="primary" onClick={() => setTab("runs")}>
+              <Button variant="primary" onClick={() => goToTab("runs")}>
                 View runs
-              </button>
+              </Button>
             </div>
             {!hasExecutions && <div className="empty">No executions yet</div>}
             {hasExecutions && (
               <div className="stack">
-                {Object.values(executions).map((execution) => (
-                  <article className="card" key={execution.executionId}>
+                {executionList.map((execution) => {
+                  const isFocused = execution.executionId === focusExecutionId;
+                  const isMinimized = minimizedExecutions[execution.executionId] ?? false;
+                  const isStepsMinimized = stepsMinimized[execution.executionId] ?? false;
+                  const statusClass = getExecutionStatusClass(execution.status);
+                  return (
+                  <article
+                    className={`card execution-card execution-card--${statusClass} ${isFocused ? "execution-card--active" : ""} ${isMinimized ? "execution-card--min" : ""}`}
+                    key={execution.executionId}
+                  >
                     <div className="card-header">
                       <div>
                         <h3>{execution.planPath}</h3>
@@ -1111,68 +1303,90 @@ export default function App() {
                       </div>
                       <span className={`pill ${execution.status}`}>{execution.status}</span>
                     </div>
-                    <div className="meta">
-                      {execution.startedAt && <span>Started: {formatDate(execution.startedAt)}</span>}
-                      {execution.finishedAt && <span>Finished: {formatDate(execution.finishedAt)}</span>}
-                      {(execution.fromStep || execution.toStep) && (
-                        <span>
-                          Range {execution.fromStep ?? 1} - {execution.toStep ?? "?"}
-                        </span>
-                      )}
-                      {execution.selectedSteps && execution.selectedSteps.length > 0 && (
-                        <span>Selected: {execution.selectedSteps.join(", ")}</span>
-                      )}
-                    </div>
-                    <div className="log-filters">
-                      <input
-                        placeholder="Filter logs..."
-                        value={logFilters[execution.executionId]?.text ?? ""}
-                        onChange={(event) =>
-                          setLogFilters((current) => ({
-                            ...current,
-                            [execution.executionId]: {
-                              level: current[execution.executionId]?.level ?? "all",
-                              text: event.target.value
+                    {!isMinimized && (
+                      <>
+                        <div className="meta">
+                          {execution.startedAt && <span>Started: {formatDate(execution.startedAt)}</span>}
+                          {execution.finishedAt && <span>Finished: {formatDate(execution.finishedAt)}</span>}
+                          {(execution.fromStep || execution.toStep) && (
+                            <span>
+                              Range {execution.fromStep ?? 1} - {execution.toStep ?? "?"}
+                            </span>
+                          )}
+                          {execution.selectedSteps && execution.selectedSteps.length > 0 && (
+                            <span>Selected: {execution.selectedSteps.join(", ")}</span>
+                          )}
+                        </div>
+                        <div className="log-filters">
+                          <select
+                            value={logFilters[execution.executionId]?.level ?? "all"}
+                            onChange={(event) =>
+                              setLogFilters((current) => ({
+                                ...current,
+                                [execution.executionId]: {
+                                  level: event.target.value as "all" | "error"
+                                }
+                              }))
                             }
-                          }))
-                        }
-                      />
-                      <select
-                        value={logFilters[execution.executionId]?.level ?? "all"}
-                        onChange={(event) =>
-                          setLogFilters((current) => ({
+                          >
+                            <option value="all">All</option>
+                            <option value="error">Errors</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
+                    <div className="actions">
+                      {execution.runId ? (
+                        <a className="btn btn--ghost btn--sm" href={`/runs/${execution.runId}/index.html`}>
+                          Abrir run
+                        </a>
+                      ) : null}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setMinimizedExecutions((current) => ({
                             ...current,
-                            [execution.executionId]: {
-                              text: current[execution.executionId]?.text ?? "",
-                              level: event.target.value as "all" | "error"
-                            }
+                            [execution.executionId]: !isMinimized
                           }))
                         }
                       >
-                        <option value="all">All</option>
-                        <option value="error">Errors</option>
-                      </select>
-                    </div>
-                    <div className="actions">
-                      <button
-                        className="danger"
+                        {isMinimized ? "Expandir execucao" : "Minimizar execucao"}
+                      </Button>
+                      {!isMinimized && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setStepsMinimized((current) => ({
+                              ...current,
+                              [execution.executionId]: !isStepsMinimized
+                            }))
+                          }
+                        >
+                          {isStepsMinimized ? "Expandir steps" : "Minimizar steps"}
+                        </Button>
+                      )}
+                      <Button
+                        variant="danger"
+                        size="sm"
                         onClick={() => stopExecution(execution.executionId)}
                         disabled={execution.status !== "running"}
                       >
                         Stop
-                      </button>
+                      </Button>
                     </div>
-                    {execution.output && execution.output.length > 0 && (
+                    {!isMinimized && execution.output && execution.output.length > 0 && (
                       <div className="output-groups">
                         {renderExecutionOutput(
                           execution.output,
-                          logFilters[execution.executionId]?.text ?? "",
-                          logFilters[execution.executionId]?.level ?? "all"
+                          logFilters[execution.executionId]?.level ?? "all",
+                          isStepsMinimized
                         )}
                       </div>
                     )}
                   </article>
-                ))}
+                );})}
               </div>
             )}
           </section>
@@ -1185,9 +1399,9 @@ export default function App() {
                 <h2>Runs</h2>
                 <p>Recent runs and cached executions.</p>
               </div>
-              <button className="primary" onClick={() => loadRuns(runsPage, runsPageSize)}>
+              <Button variant="primary" onClick={() => loadRuns(runsPage, runsPageSize)}>
                 Refresh
-              </button>
+              </Button>
             </div>
             {runsLoading ? (
               <div className="empty">Loading runs...</div>
@@ -1225,52 +1439,60 @@ export default function App() {
                       </div>
                     )}
                       <div className="actions">
-                        <a className="ghost" href={`/runs/${run.runId}/index.html`}>
+                        <a className="btn btn--ghost btn--sm" href={`/runs/${run.runId}/index.html`}>
                           Open
                         </a>
+                        {run.logsUrl && (
+                          <a className="btn btn--ghost btn--sm" href={run.logsUrl}>
+                            Logs
+                          </a>
+                        )}
                         {run.planPath && (
-                          <button
-                            className="primary"
-                          onClick={() =>
-                            runPlan(
-                              run.planPath || "",
-                              {
-                                fromStep: run.fromStep || undefined,
-                                toStep: run.toStep || undefined
-                              },
-                              {
-                                selectedSteps: run.selectedSteps || undefined
-                              }
-                            )
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() =>
+                              runPlan(
+                                run.planPath || "",
+                                {
+                                  fromStep: run.fromStep || undefined,
+                                  toStep: run.toStep || undefined
+                                },
+                                {
+                                  selectedSteps: run.selectedSteps || undefined
+                                }
+                              )
                             }
                           >
                             Run again
-                          </button>
+                          </Button>
                         )}
-                        <button className="danger" onClick={() => deleteRun(run.runId)}>
+                        <Button variant="danger" size="sm" onClick={() => deleteRun(run.runId)}>
                           Delete
-                        </button>
+                        </Button>
                       </div>
                     </article>
                   ))}
                 </div>
               )}
             <div className="pagination">
-              <button
-                className="ghost"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setRunsPage(Math.max(1, runsPage - 1))}
                 disabled={runsPage <= 1}
               >
                 Previous
-              </button>
+              </Button>
               <span>Page {runsPage} of {totalPages}</span>
-              <button
-                className="ghost"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setRunsPage(Math.min(totalPages, runsPage + 1))}
                 disabled={runsPage >= totalPages}
               >
                 Next
-              </button>
+              </Button>
             </div>
           </section>
         )}
@@ -1282,9 +1504,9 @@ export default function App() {
                 <h2>Reports</h2>
                 <p>Monte um documento com evidencias selecionadas.</p>
               </div>
-              <button className="primary" onClick={() => loadReportRuns()} disabled={reportRunsLoading}>
+              <Button variant="primary" onClick={() => loadReportRuns()} disabled={reportRunsLoading}>
                 {reportRunsLoading ? "Loading..." : "Refresh runs"}
-              </button>
+              </Button>
             </div>
             <div className="report-builder">
               <div className="card report-panel">
@@ -1298,37 +1520,38 @@ export default function App() {
                     />
                   </label>
                   <div className="report-inline-actions">
-                    <button
-                      className="ghost"
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => reportRunId && loadRunDetails(reportRunId)}
                       disabled={!reportRunId}
                     >
                       Reload run
-                    </button>
-                    <button className="primary" onClick={generateReport} disabled={!reportRunId}>
+                    </Button>
+                    <Button variant="primary" onClick={generateReport} disabled={!reportRunId}>
                       Generate docx
-                    </button>
+                    </Button>
                   </div>
                 </div>
                 <div className="report-actions">
-                  <button className="ghost" onClick={() => addReportBlock("h1")}>Add H1</button>
-                  <button className="ghost" onClick={() => addReportBlock("h2")}>Add H2</button>
-                  <button className="ghost" onClick={() => addReportBlock("p")}>Add P</button>
-                  <button className="ghost" onClick={() => addReportBlock("small")}>Add Small</button>
-                  <button className="ghost" onClick={() => addReportBlock("evidence")}>Add evidence</button>
+                  <Button variant="ghost" size="sm" onClick={() => addReportBlock("h1")}>Add H1</Button>
+                  <Button variant="ghost" size="sm" onClick={() => addReportBlock("h2")}>Add H2</Button>
+                  <Button variant="ghost" size="sm" onClick={() => addReportBlock("p")}>Add P</Button>
+                  <Button variant="ghost" size="sm" onClick={() => addReportBlock("small")}>Add Small</Button>
+                  <Button variant="ghost" size="sm" onClick={() => addReportBlock("evidence")}>Add evidence</Button>
                 </div>
                 {reportLinks && (
                   <div className="report-links">
                     {reportLinks.docxUrl && (
-                      <a className="ghost" href={reportLinks.docxUrl}>Download docx</a>
+                      <a className="btn btn--ghost btn--sm" href={reportLinks.docxUrl}>Download docx</a>
                     )}
                     {reportLinks.htmlUrl && (
-                      <a className="ghost" href={reportLinks.htmlUrl} target="_blank" rel="noreferrer">
+                      <a className="btn btn--ghost btn--sm" href={reportLinks.htmlUrl} target="_blank" rel="noreferrer">
                         Open HTML
                       </a>
                     )}
                     {reportLinks.jsonUrl && (
-                      <a className="ghost" href={reportLinks.jsonUrl} target="_blank" rel="noreferrer">
+                      <a className="btn btn--ghost btn--sm" href={reportLinks.jsonUrl} target="_blank" rel="noreferrer">
                         Open JSON
                       </a>
                     )}
@@ -1347,15 +1570,16 @@ export default function App() {
                               <span className="muted">#{index + 1}</span>
                             </div>
                             <div className="report-block-actions">
-                              <button className="ghost" onClick={() => moveReportBlock(block.id, -1)}>Up</button>
-                              <button className="ghost" onClick={() => moveReportBlock(block.id, 1)}>Down</button>
-                              <button
-                                className="ghost"
+                              <Button variant="ghost" size="sm" onClick={() => moveReportBlock(block.id, -1)}>Up</Button>
+                              <Button variant="ghost" size="sm" onClick={() => moveReportBlock(block.id, 1)}>Down</Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => updateReportBlock(block.id, { enabled: block.enabled === false })}
                               >
                                 {block.enabled === false ? "Include" : "Skip"}
-                              </button>
-                              <button className="danger" onClick={() => removeReportBlock(block.id)}>Remove</button>
+                              </Button>
+                              <Button variant="danger" size="sm" onClick={() => removeReportBlock(block.id)}>Remove</Button>
                             </div>
                           </div>
                           <div className="report-block-body">
@@ -1391,9 +1615,9 @@ export default function App() {
                                         : "No evidence selected"}
                                     </span>
                                   </div>
-                                  <button className="ghost" onClick={() => openEvidencePicker(block.id)}>
+                                  <Button variant="ghost" size="sm" onClick={() => openEvidencePicker(block.id)}>
                                     Choose evidence
-                                  </button>
+                                  </Button>
                                 </div>
                               </div>
                             )}
@@ -1471,9 +1695,9 @@ export default function App() {
                 <h2>Triggers</h2>
                 <p>Create and manage trigger status.</p>
               </div>
-              <button className="primary" onClick={() => loadTriggers()} disabled={triggersLoading}>
+              <Button variant="primary" onClick={() => loadTriggers()} disabled={triggersLoading}>
                 {triggersLoading ? "Loading..." : "Refresh"}
-              </button>
+              </Button>
             </div>
             <form className="form" onSubmit={createTrigger} data-testid="trigger-form">
               <input
@@ -1500,7 +1724,7 @@ export default function App() {
                 value={triggerForm.logsUrl}
                 onChange={(event) => setTriggerForm({ ...triggerForm, logsUrl: event.target.value })}
               />
-              <button className="primary" type="submit">Create</button>
+              <Button variant="primary" type="submit">Create</Button>
             </form>
             {triggersLoading ? (
               <div className="empty">Loading triggers...</div>
@@ -1524,25 +1748,25 @@ export default function App() {
                     </div>
                     <div className="actions">
                       {trigger.logsUrl && (
-                        <a className="ghost" href={trigger.logsUrl} target="_blank" rel="noreferrer">
+                        <a className="btn btn--ghost btn--sm" href={trigger.logsUrl} target="_blank" rel="noreferrer">
                           Logs
                         </a>
                       )}
-                      <button className="ghost" onClick={() => updateTrigger(trigger.id, { status: "observing" })}>
+                      <Button variant="ghost" size="sm" onClick={() => updateTrigger(trigger.id, { status: "observing" })}>
                         Start
-                      </button>
-                      <button className="ghost" onClick={() => updateTrigger(trigger.id, { status: "stopped" })}>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => updateTrigger(trigger.id, { status: "stopped" })}>
                         Stop
-                      </button>
-                      <button className="ghost" onClick={() => updateTrigger(trigger.id, { status: "success" })}>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => updateTrigger(trigger.id, { status: "success" })}>
                         Success
-                      </button>
-                      <button className="ghost" onClick={() => updateTrigger(trigger.id, { status: "error" })}>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => updateTrigger(trigger.id, { status: "error" })}>
                         Error
-                      </button>
-                      <button className="danger" onClick={() => deleteTrigger(trigger.id)}>
+                      </Button>
+                      <Button variant="danger" size="sm" onClick={() => deleteTrigger(trigger.id)}>
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </article>
                 ))}
@@ -1550,12 +1774,19 @@ export default function App() {
             )}
           </section>
         )}
-      </main>
+      </div>
 
       {toast && (
-        <div className={`toast ${toast.tone || "info"}`}>
-          <span>{toast.message}</span>
-          <button className="ghost" onClick={() => setToast(null)}>Close</button>
+        <div
+          className={`toast ${toast.tone}`}
+          style={{ "--toast-duration": `${toast.durationMs}ms` } as React.CSSProperties}
+        >
+          <div className="toast__content">
+            <strong className="toast__title">{toast.title}</strong>
+            <span className="toast__message">{toast.message}</span>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setToast(null)}>Fechar</Button>
+          <div className="toast__progress" />
         </div>
       )}
 
@@ -1564,7 +1795,7 @@ export default function App() {
           <div className="modal report-evidence-modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
               <h3>Choose evidence</h3>
-              <button className="ghost" onClick={closeEvidencePicker}>Close</button>
+              <Button variant="ghost" size="sm" onClick={closeEvidencePicker}>Close</Button>
             </div>
             <div className="report-evidence-modal-body">
               <div className="report-evidence-selectors">
@@ -1630,7 +1861,7 @@ export default function App() {
                     return <iframe title={artifact.filename} src={artifact.url} />;
                   }
                   return (
-                    <a className="ghost" href={artifact.url} target="_blank" rel="noreferrer">
+                    <a className="btn btn--ghost btn--sm" href={artifact.url} target="_blank" rel="noreferrer">
                       Open {artifact.filename}
                     </a>
                   );
@@ -1638,20 +1869,20 @@ export default function App() {
               </div>
             </div>
             <div className="report-evidence-modal-actions">
-              <button className="ghost" onClick={closeEvidencePicker}>Cancel</button>
-              <button
-                className="primary"
+              <Button variant="ghost" size="sm" onClick={closeEvidencePicker}>Cancel</Button>
+              <Button
+                variant="primary"
                 data-testid="report-modal-confirm"
                 onClick={confirmEvidencePicker}
                 disabled={!evidencePicker.filename}
               >
                 Confirm evidence
-              </button>
+              </Button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </AppShell>
   );
 }
 
@@ -1691,6 +1922,13 @@ function truncatePath(value: string) {
   const normalized = value.replace(/\\/g, "/");
   const parts = normalized.split("/");
   return parts[parts.length - 1];
+}
+
+function truncateText(value: string, max: number) {
+  if (!value || value.length <= max) {
+    return value;
+  }
+  return value.slice(0, Math.max(1, max - 3)) + "...";
 }
 
 function getPlanFromHash() {
@@ -1877,9 +2115,9 @@ function getPlanFlags(plan: Plan) {
   return flags;
 }
 
-function renderExecutionOutput(output: string[], filterText: string, level: "all" | "error") {
+function renderExecutionOutput(output: string[], level: "all" | "error", compact = false) {
   const lines = output.join("").split(/\r?\n/);
-  const filteredLines = filterExecutionLines(lines, filterText, level);
+  const filteredLines = filterExecutionLines(lines, "", level);
   const groups = groupOutputByStep(filteredLines);
   if (groups.length === 0) {
     return <div className="output">No output yet</div>;
@@ -1889,7 +2127,14 @@ function renderExecutionOutput(output: string[], filterText: string, level: "all
       <div className={`output-header ${group.statusClass}`}>
         <span>{group.title}</span>
         <span className="output-meta">
-          {group.cacheHit ? <span className="cache-pill">cache</span> : null}
+          {group.cacheHit ? (
+            <span className="cache-pill">
+              cache{group.cacheKey ? ` ${group.cacheKey.slice(0, 8)}` : ""}
+            </span>
+          ) : null}
+          {group.cacheInputs ? (
+            <span className="cache-pill">inputs {truncateText(group.cacheInputs, 42)}</span>
+          ) : null}
           {typeof group.attempts === "number" ? (
             <span className="attempts-pill">attempts {group.attempts}</span>
           ) : null}
@@ -1897,7 +2142,7 @@ function renderExecutionOutput(output: string[], filterText: string, level: "all
           {formatGroupStatus(group)}
         </span>
       </div>
-      <pre className="output">{group.lines.join("\n")}</pre>
+      {!compact && <pre className="output">{group.lines.join("\n")}</pre>}
     </div>
   ));
 }
@@ -1929,6 +2174,8 @@ function groupOutputByStep(lines: string[]) {
     statusClass: string;
     durationMs?: number;
     cacheHit?: boolean;
+    cacheKey?: string;
+    cacheInputs?: string;
     attempts?: number;
     errorCount?: number;
   }> = [];
@@ -1954,6 +2201,8 @@ function createGroup(title: string) {
     statusLabel: "RUNNING",
     statusClass: "running",
     cacheHit: false,
+    cacheKey: undefined,
+    cacheInputs: undefined,
     attempts: undefined,
     errorCount: 0
   };
@@ -1988,6 +2237,14 @@ function updateGroupStatus(
   if (line.toLowerCase().includes("cache")) {
     group.cacheHit = true;
   }
+  const cacheKeyMatch = line.match(/cacheKey=([a-f0-9]+)/i);
+  if (cacheKeyMatch) {
+    group.cacheKey = cacheKeyMatch[1];
+  }
+  const cacheInputsMatch = line.match(/cacheInputs=([^\s]+)/i);
+  if (cacheInputsMatch) {
+    group.cacheInputs = cacheInputsMatch[1];
+  }
   if (line.toLowerCase().includes("error")) {
     group.errorCount = (group.errorCount ?? 0) + 1;
   }
@@ -2006,4 +2263,13 @@ function formatGroupStatus(group: { statusLabel: string; durationMs?: number }) 
     return `${group.statusLabel} (${group.durationMs}ms)`;
   }
   return group.statusLabel;
+}
+
+function getExecutionStatusClass(status?: string) {
+  const normalized = (status || "").toLowerCase();
+  if (normalized === "running") return "running";
+  if (normalized === "completed" || normalized === "ok") return "success";
+  if (normalized === "failed" || normalized === "error") return "error";
+  if (normalized === "stopped") return "warning";
+  return "neutral";
 }

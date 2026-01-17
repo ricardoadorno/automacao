@@ -116,6 +116,7 @@ function buildCliEvidenceHtml(
 
   const metaLine = [
     `Step: ${escapeHtml(step.id ?? step.type)}`,
+    `Type: ${escapeHtml(step.type)}`,
     `Command: ${escapeHtml(command)}`,
     `Args: ${escapeHtml(args)}`,
     `Cwd: ${escapeHtml(cwd)}`,
@@ -160,6 +161,9 @@ function buildCliEvidenceHtml(
     h2, h3 { margin: 8px 0 4px; font-size: 12px; font-weight: 600; }
     .summary { font-size: 11px; color: #3b3f44; background: #f7f5ef; border: 1px solid #e0dbd1; border-radius: 8px; padding: 6px 8px; margin-bottom: 8px; }
     .description { padding: 6px 8px; border-radius: 8px; background: #fff7db; border: 1px solid #f0e0a8; font-size: 11px; margin-bottom: 8px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .btn { border: 1px solid #d0c9bc; background: #f7f4ee; color: #1f2328; padding: 6px 10px; border-radius: 8px; font-size: 10px; text-decoration: none; text-transform: uppercase; letter-spacing: 0.4px; }
+    .btn.secondary { background: #fff; }
     table { border-collapse: collapse; width: 100%; margin-bottom: 8px; font-size: 10px; }
     td, th { border: 1px solid #d6d0c6; padding: 3px 5px; text-align: left; vertical-align: top; }
     th { background: #f3f1ea; width: 120px; }
@@ -169,6 +173,11 @@ function buildCliEvidenceHtml(
 <body>
   <div class="card">
     <h2>CLI Evidence</h2>
+    <div class="toolbar">
+      <a class="btn" href="stdout.txt" download="stdout.txt">Download stdout</a>
+      <a class="btn" href="stderr.txt" download="stderr.txt">Download stderr</a>
+      <a class="btn secondary" href="evidence.html" download="evidence.html">Download HTML</a>
+    </div>
     <div class="summary">${metaLine}</div>
     ${descriptionBlock}
     ${commandTable}

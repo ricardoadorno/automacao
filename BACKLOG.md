@@ -69,16 +69,19 @@ Legenda de status: [DONE] concluido, [PARTIAL] parcial, [TODO] pendente.
 - Painel Running com blocos por step e logs associados. [DONE]
 - Controles de execucao por range no card do plan. [DONE]
 - Feedback visual de cache hit/miss. [DONE]
+- Exibir hash/insumos usados no cache e motivo do skip (inputs, artifacts, contexto).
 - Montador de relatorio com preview e selecao de evidencias multi-run. [DONE]
 - Indicador de status do gatilho (observando, sucesso, erro, parado). [DONE]
 - Links para evidencias e logstream. [DONE]
 - Filtros basicos de log por step e por nivel. [DONE]
+- Stream em tempo real de logs por step (SSE/WebSocket) com indicador do estado do runner.
 
 ### API
 1) /api/plans
 - Incluir steps detalhados: index, id, type, description, details, artifacts.
 - Gerar descricao automatica quando o plan nao fornece description.
 - Carregar behaviors e curl para enriquecer detalhes (actions, metodo/url quando possivel).
+ - Validar plan com JSON Schema e retornar erros por campo.
 
 2) /api/run
 - Aceitar fromStep/toStep (1-based) para execucao parcial.
@@ -100,6 +103,7 @@ Legenda de status: [DONE] concluido, [PARTIAL] parcial, [TODO] pendente.
 - Padrao de evidencias por tipo (sql, curl, script, behavior). [DONE]
 - Templates de relatorio simples por plan (JSON + HTML/DOCX). [DONE]
 - Opcao de exportar resultado consolidado (HTML/DOCX) a partir do template. [DONE]
+- Template padronizado por tipo com metadados consistentes e link de volta ao step.
 
 ### Dominios
 - Especificar fronteiras e contratos de cada dominio.
@@ -112,6 +116,7 @@ Legenda de status: [DONE] concluido, [PARTIAL] parcial, [TODO] pendente.
 - Testes de docs/evidencias: relatorio gerado com artefatos. [DONE]
 - Testes de gatilhos (mock): status e atualizacao. [DONE]
 - Smoke manual: dashboard exibindo detalhes e rodando range. [DONE]
+- Teste de validacao: plan invalido retorna erro amigavel por campo.
 
 ## Fora de escopo
 - Editor visual de plans.

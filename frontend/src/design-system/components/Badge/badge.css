@@ -1,0 +1,22 @@
+.badge {
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+}
+
+.badge--success {
+  background: #E8F5E9;
+  color: var(--color-success);
+}
+
+.badge--error {
+  background: #FFEBEE;
+  color: var(--color-error);
+}
+
+.badge--warning {
+  background: #FFF3E0;
+  color: var(--color-warning);
+}

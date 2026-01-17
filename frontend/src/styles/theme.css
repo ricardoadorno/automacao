@@ -1,0 +1,24 @@
+html, body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-body);
+  background: var(--color-bg);
+  color: var(--color-text-main);
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-bold);
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-bold);
+}
+
+p {
+  color: var(--color-text-secondary);
+}
+
+a {
+  color: var(--color-navy);
+}

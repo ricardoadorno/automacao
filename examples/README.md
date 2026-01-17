@@ -29,6 +29,10 @@ Este diretorio guarda planos de exemplo usados para demonstracao e testes locais
 - Caminho: `examples/browser-basic/plan.json`
 - O que faz: abre example.com e captura screenshot.
 
+### screenshots-localhost
+- Caminho: `examples/screenshots-localhost/plan.json`
+- O que faz: captura telas e modais do app em `http://localhost:3000`.
+
 ### sqlite-basic
 - Caminho: `examples/sqlite-basic/plan.json`
 - O que faz: consulta SQLite e gera evidencias.

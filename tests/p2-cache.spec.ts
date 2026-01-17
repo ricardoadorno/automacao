@@ -71,5 +71,8 @@ describe("P2 cache", () => {
     );
 
     expect(cacheHit).toBeTruthy();
+    const cachedStep = cacheHit.steps.find((step: { outputs?: { cacheHit?: boolean } }) => step.outputs?.cacheHit);
+    expect(cachedStep.outputs?.cacheKey).toBeTruthy();
+    expect(cachedStep.outputs?.cacheInputs).toBeTruthy();
   });
 });

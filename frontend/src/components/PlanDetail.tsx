@@ -6,6 +6,7 @@ import {
   updateItem,
   removeItem
 } from "../lib/inputs";
+import { Button } from "../design-system";
 
 type PlanDetailProps = {
   plan: Plan;
@@ -39,6 +40,8 @@ export function PlanDetail({
   const overridesRows = inputsDraft?.overridesRows ?? [];
   const itemsRows = inputsDraft?.itemsRows ?? [];
   const errors = inputsDraft?.errors ?? [];
+  const validationErrors = plan.validationErrors ?? [];
+  const hasValidationErrors = validationErrors.length > 0;
   return (
     <div className="card plan-detail-card">
       <div className="plan-detail-header">
@@ -46,17 +49,24 @@ export function PlanDetail({
           <h3>{plan.feature}</h3>
           <p className="muted">{plan.path}</p>
         </div>
-        <button className="ghost" onClick={onClose}>Close</button>
+        <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
       </div>
       <div className="meta">
         {plan.ticket && <span>Ticket: {plan.ticket}</span>}
         {plan.env && <span>Env: {plan.env}</span>}
         <span>{plan.stepsCount} steps</span>
       </div>
+      {hasValidationErrors && (
+        <div className="input-errors">
+          {validationErrors.map((error, idx) => (
+            <div key={`plan-err-${idx}`}>{error.path}: {error.message}</div>
+          ))}
+        </div>
+      )}
       <div className="detail-section">
         <div className="detail-title">
           <h4>Inputs for this run</h4>
-          <button className="ghost" onClick={onReset}>Reset</button>
+          <Button variant="ghost" size="sm" onClick={onReset}>Reset</Button>
         </div>
         <div className="inputs-grid">
           <label>
@@ -71,9 +81,9 @@ export function PlanDetail({
           <div className="kv-editor">
             <div className="kv-header">
               <span>Defaults</span>
-              <button className="ghost" onClick={() => onInputsChange({ defaultsRows: addRow(defaultsRows) })}>
+              <Button variant="ghost" size="sm" onClick={() => onInputsChange({ defaultsRows: addRow(defaultsRows) })}>
                 Add
-              </button>
+              </Button>
             </div>
             {defaultsRows.length === 0 && <span className="helper">Sem defaults.</span>}
             {defaultsRows.map((row, idx) => (
@@ -92,9 +102,9 @@ export function PlanDetail({
                     onInputsChange({ defaultsRows: updateRow(defaultsRows, idx, { value: event.target.value }) })
                   }
                 />
-                <button className="ghost" onClick={() => onInputsChange({ defaultsRows: removeRow(defaultsRows, idx) })}>
+                <Button variant="ghost" size="sm" onClick={() => onInputsChange({ defaultsRows: removeRow(defaultsRows, idx) })}>
                   Remove
-                </button>
+                </Button>
               </div>
             ))}
             <span className="helper">Use para valores base (ex: baseUrl, timeout).</span>
@@ -102,9 +112,9 @@ export function PlanDetail({
           <div className="kv-editor">
             <div className="kv-header">
               <span>Overrides</span>
-              <button className="ghost" onClick={() => onInputsChange({ overridesRows: addRow(overridesRows) })}>
+              <Button variant="ghost" size="sm" onClick={() => onInputsChange({ overridesRows: addRow(overridesRows) })}>
                 Add
-              </button>
+              </Button>
             </div>
             {overridesRows.length === 0 && <span className="helper">Sem overrides.</span>}
             {overridesRows.map((row, idx) => (
@@ -123,9 +133,9 @@ export function PlanDetail({
                     onInputsChange({ overridesRows: updateRow(overridesRows, idx, { value: event.target.value }) })
                   }
                 />
-                <button className="ghost" onClick={() => onInputsChange({ overridesRows: removeRow(overridesRows, idx) })}>
+                <Button variant="ghost" size="sm" onClick={() => onInputsChange({ overridesRows: removeRow(overridesRows, idx) })}>
                   Remove
-                </button>
+                </Button>
               </div>
             ))}
             <span className="helper">Overrides substituem defaults no run.</span>
@@ -133,9 +143,9 @@ export function PlanDetail({
           <div className="kv-editor">
             <div className="kv-header">
               <span>Items / Loop</span>
-              <button className="ghost" onClick={() => onInputsChange({ itemsRows: [...itemsRows, "{"] })}>
+              <Button variant="ghost" size="sm" onClick={() => onInputsChange({ itemsRows: [...itemsRows, "{"] })}>
                 Add item
-              </button>
+              </Button>
             </div>
             {itemsRows.length === 0 && <span className="helper">Sem items. Loop desativado.</span>}
             {itemsRows.map((item, idx) => (
@@ -147,9 +157,9 @@ export function PlanDetail({
                     onInputsChange({ itemsRows: updateItem(itemsRows, idx, event.target.value) })
                   }
                 />
-                <button className="ghost" onClick={() => onInputsChange({ itemsRows: removeItem(itemsRows, idx) })}>
+                <Button variant="ghost" size="sm" onClick={() => onInputsChange({ itemsRows: removeItem(itemsRows, idx) })}>
                   Remove
-                </button>
+                </Button>
               </div>
             ))}
             <span className="helper">Cada item e um objeto JSON usado no loop.</span>
@@ -195,9 +205,9 @@ export function PlanDetail({
           ))}
         </div>
       </div>
-      <button className="primary" onClick={onRun}>
+      <Button variant="primary" onClick={onRun} disabled={hasValidationErrors}>
         Run selected steps
-      </button>
+      </Button>
     </div>
   );
 }

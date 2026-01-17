@@ -20,6 +20,9 @@ interface TabularMeta {
   rows?: string[][];
   fileBase64?: string;
   viewerMode: ViewerMode;
+  stepId: string;
+  stepType: string;
+  generatedAt: string;
 }
 
 interface TabularResult {
@@ -62,7 +65,10 @@ export async function executeTabularStep(
     sheet: config.sheet ?? null,
     delimiter: config.delimiter ?? ",",
     maxRows,
-    viewerMode
+    viewerMode,
+    stepId: step.id ?? step.type,
+    stepType: step.type,
+    generatedAt: new Date().toISOString()
   };
 
   let rowsCount: number | undefined;
@@ -348,6 +354,9 @@ function buildViewerHtml(meta: TabularMeta): string {
   <header>
     <h1>${escapeHtml(meta.title)}</h1>
     <div class="meta">
+      <span class="badge">Step: ${escapeHtml(meta.stepId)}</span>
+      <span class="badge">Type: ${escapeHtml(meta.stepType)}</span>
+      <span class="badge">Generated: ${escapeHtml(meta.generatedAt)}</span>
       <span class="badge">File: ${escapeHtml(meta.fileName)}</span>
       <span class="badge">Rows: <span id="rowCount">-</span></span>
       <span class="badge">Columns: <span id="columnCount">-</span></span>

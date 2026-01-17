@@ -16,9 +16,63 @@ const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "localhost";
 const triggersPath = path.join(process.cwd(), "runs", "triggers.json");
 const dashboardDist = path.join(process.cwd(), "public", "dashboard");
+const runnerEntry = path.join(process.cwd(), "dist", "index.js");
 
 // Track running executions
 const runningExecutions = new Map();
+
+function extractRunId(text) {
+  const match = text.match(/Run\s+(\d{14}_\d{4})\s+started/);
+  return match ? match[1] : "";
+}
+
+function getRunLogPath(runId) {
+  return path.join(process.cwd(), "runs", runId, "execution.log");
+}
+
+function resolveRunnerCommand() {
+  const buildOnRun = ["1", "true"].includes(
+    String(process.env.AUTOMACAO_BUILD_ON_RUN || "").toLowerCase()
+  );
+  const hasDist = fs.existsSync(runnerEntry);
+  return buildOnRun || !hasDist ? "npm run start:full --" : "npm start --";
+}
+
+async function appendRunLog(runId, text) {
+  if (!runId) {
+    return;
+  }
+  const logPath = getRunLogPath(runId);
+  await fs.promises.mkdir(path.dirname(logPath), { recursive: true });
+  await fs.promises.appendFile(logPath, text, "utf-8");
+}
+
+async function appendExecutionOutput(execution, text) {
+  if (!execution) {
+    return;
+  }
+  execution.output.push(text);
+  if (!execution.runId) {
+    const runId = extractRunId(text);
+    if (runId) {
+      execution.runId = runId;
+    }
+  }
+  if (execution.runId) {
+    if (Array.isArray(execution.logBuffer) && execution.logBuffer.length > 0) {
+      const buffered = execution.logBuffer.join("");
+      execution.logBuffer = [];
+      await appendRunLog(execution.runId, buffered);
+    }
+    await appendRunLog(execution.runId, text);
+    return;
+  }
+  if (!Array.isArray(execution.logBuffer)) {
+    execution.logBuffer = [];
+  }
+  execution.logBuffer.push(text);
+}
+
 
 // API endpoints
 const routes = {
@@ -27,6 +81,7 @@ const routes = {
   "/api/examples": handleGetExamples,
   "/api/run": handleRunPlan,
   "/api/status": handleGetStatus,
+  "/api/execution-stream": handleExecutionStream,
   "/api/stop": handleStopExecution,
   "/api/runs": handleRuns,
   "/api/run-details": handleRunDetails,
@@ -174,14 +229,14 @@ async function findPlans(dir, baseRoot, basePath = "") {
       try {
         const content = await fs.promises.readFile(fullPath, "utf-8");
         const plan = JSON.parse(content);
+        const validationErrors = validatePlanStructure(plan);
         const planDir = path.dirname(fullPath);
         const behaviors = await loadBehaviorsSafe(plan.behaviorsPath, planDir);
         const curl = await loadCurlSafe(plan.curlPath, planDir);
-        const steps = Array.isArray(plan.steps)
-          ? plan.steps.map((step, index) =>
-              buildStepDetails(step, index, behaviors, curl)
-            )
-          : [];
+        const stepsRaw = Array.isArray(plan.steps) ? plan.steps : [];
+        const steps = stepsRaw.map((step, index) =>
+          buildStepDetails(step, index, behaviors, curl)
+        );
 
         plans.push({
           path: path.join(baseRoot, relativePath).replace(/\\/g, "/"),
@@ -189,10 +244,11 @@ async function findPlans(dir, baseRoot, basePath = "") {
           feature: plan.metadata?.feature || "Unnamed",
           ticket: plan.metadata?.ticket || "",
           env: plan.metadata?.env || "",
-          stepsCount: plan.steps?.length || 0,
+          stepsCount: stepsRaw.length,
           steps,
           config: summarizePlanConfig(plan),
-          inputs: plan.inputs ?? null
+          inputs: plan.inputs ?? null,
+          validationErrors
         });
       } catch (error) {
         // Skip invalid plan files
@@ -281,6 +337,171 @@ function parseCurl(raw) {
     method: methodMatch ? methodMatch[1].toUpperCase() : "GET",
     url: urlMatch ? urlMatch[1] : ""
   };
+}
+
+function validatePlanStructure(plan) {
+  const errors = [];
+  if (!plan || typeof plan !== "object") {
+    return [{ path: "$", message: "plan must be an object" }];
+  }
+  if (!plan.metadata || typeof plan.metadata !== "object") {
+    errors.push({ path: "metadata", message: "metadata is required" });
+  } else if (!isNonEmptyString(plan.metadata.feature)) {
+    errors.push({ path: "metadata.feature", message: "feature is required" });
+  }
+  if (!Array.isArray(plan.steps)) {
+    errors.push({ path: "steps", message: "steps must be an array" });
+  } else {
+    plan.steps.forEach((step, index) => {
+      const basePath = `steps[${index}]`;
+      if (!step || typeof step !== "object") {
+        errors.push({ path: basePath, message: "step must be an object" });
+        return;
+      }
+      if (!isNonEmptyString(step.type)) {
+        errors.push({ path: `${basePath}.type`, message: "type is required" });
+        return;
+      }
+      validateStep(step, String(step.type), basePath, errors);
+    });
+  }
+  if (Array.isArray(plan.steps) && plan.steps.some((step) => step?.type === "browser")) {
+    if (!isNonEmptyString(plan.behaviorsPath)) {
+      errors.push({
+        path: "behaviorsPath",
+        message: "behaviorsPath is required when using browser steps"
+      });
+    }
+  }
+  if (Array.isArray(plan.steps) && plan.steps.some((step) => step?.type === "api")) {
+    if (!isNonEmptyString(plan.curlPath)) {
+      errors.push({
+        path: "curlPath",
+        message: "curlPath is required when using api steps"
+      });
+    }
+  }
+  return errors;
+}
+
+function validateStep(step, type, basePath, errors) {
+  if (type === "browser") {
+    if (!isNonEmptyString(step.behaviorId)) {
+      errors.push({
+        path: `${basePath}.behaviorId`,
+        message: "behaviorId is required for browser steps"
+      });
+    }
+    return;
+  }
+  if (type === "api") {
+    return;
+  }
+  if (type === "sqlEvidence") {
+    const sql = step.config?.sql;
+    if (!sql || typeof sql !== "object") {
+      errors.push({ path: `${basePath}.config.sql`, message: "config.sql is required" });
+      return;
+    }
+    const adapter = String(sql.adapter || "files");
+    if (adapter === "sqlite") {
+      if (!isNonEmptyString(sql.dbPath)) {
+        errors.push({ path: `${basePath}.config.sql.dbPath`, message: "dbPath is required" });
+      }
+      if (!isNonEmptyString(sql.query)) {
+        errors.push({ path: `${basePath}.config.sql.query`, message: "query is required" });
+      }
+      return;
+    }
+    if (adapter === "mysql") {
+      const hasQuery = isNonEmptyString(sql.query) || isNonEmptyString(sql.queryPath);
+      if (!hasQuery) {
+        errors.push({
+          path: `${basePath}.config.sql.query`,
+          message: "query or queryPath is required"
+        });
+      }
+      if (!sql.mysql || typeof sql.mysql !== "object") {
+        errors.push({
+          path: `${basePath}.config.sql.mysql`,
+          message: "mysql config is required"
+        });
+      }
+      return;
+    }
+    if (!isNonEmptyString(sql.queryPath)) {
+      errors.push({ path: `${basePath}.config.sql.queryPath`, message: "queryPath is required" });
+    }
+    if (!isNonEmptyString(sql.resultPath)) {
+      errors.push({
+        path: `${basePath}.config.sql.resultPath`,
+        message: "resultPath is required"
+      });
+    }
+    return;
+  }
+  if (type === "tabular") {
+    const tabular = step.config?.tabular;
+    if (!tabular || typeof tabular !== "object") {
+      errors.push({ path: `${basePath}.config.tabular`, message: "config.tabular is required" });
+      return;
+    }
+    if (!isNonEmptyString(tabular.sourcePath)) {
+      errors.push({
+        path: `${basePath}.config.tabular.sourcePath`,
+        message: "sourcePath is required"
+      });
+    }
+    return;
+  }
+  if (type === "cli") {
+    const cli = step.config?.cli;
+    if (!cli || typeof cli !== "object") {
+      errors.push({ path: `${basePath}.config.cli`, message: "config.cli is required" });
+      return;
+    }
+    if (!isNonEmptyString(cli.command)) {
+      errors.push({ path: `${basePath}.config.cli.command`, message: "command is required" });
+    }
+    return;
+  }
+  if (type === "specialist") {
+    const specialist = step.config?.specialist;
+    if (!specialist || typeof specialist !== "object") {
+      errors.push({
+        path: `${basePath}.config.specialist`,
+        message: "config.specialist is required"
+      });
+      return;
+    }
+    if (!isNonEmptyString(specialist.task)) {
+      errors.push({ path: `${basePath}.config.specialist.task`, message: "task is required" });
+    }
+    if (!isNonEmptyString(specialist.outputPath)) {
+      errors.push({
+        path: `${basePath}.config.specialist.outputPath`,
+        message: "outputPath is required"
+      });
+    }
+    return;
+  }
+  if (type === "logstream") {
+    const logstream = step.config?.logstream;
+    if (!logstream || typeof logstream !== "object") {
+      errors.push({
+        path: `${basePath}.config.logstream`,
+        message: "config.logstream is required"
+      });
+      return;
+    }
+    if (!isNonEmptyString(logstream.url)) {
+      errors.push({ path: `${basePath}.config.logstream.url`, message: "url is required" });
+    }
+  }
+}
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
 }
 
 function buildStepDetails(step, index, behaviors, curl) {
@@ -525,7 +746,8 @@ async function handleRunPlan(req, res) {
       const planSourceFlag = planPath ? ` --plan-source "${planPath.replace(/"/g, '\\"')}"` : "";
       const rangeFlags = buildRangeFlags(range);
       const stepsFlags = buildStepsFlags(steps);
-      const command = `npm start -- --plan "${safePlanPath}" --out runs${rangeFlags}${stepsFlags}${planSourceFlag}`;
+      const runnerCommand = resolveRunnerCommand();
+      const command = `${runnerCommand} --plan "${safePlanPath}" --out runs${rangeFlags}${stepsFlags}${planSourceFlag}`;
       
         // Execute in background
         const child = exec(command, { cwd: process.cwd() });
@@ -535,6 +757,8 @@ async function handleRunPlan(req, res) {
           status: "running",
           startedAt: new Date().toISOString(),
           output: [],
+          logBuffer: [],
+          runId: "",
           fromStep: range?.fromStep,
           toStep: range?.toStep,
           selectedSteps: steps ?? null,
@@ -547,7 +771,7 @@ async function handleRunPlan(req, res) {
           return;
         }
         const text = data.toString();
-        execution.output.push(text);
+        appendExecutionOutput(execution, text).catch(() => {});
         if (text.includes("Run ") && text.includes(" finished:")) {
           execution.status = "completed";
           execution.finishedAt = new Date().toISOString();
@@ -559,7 +783,8 @@ async function handleRunPlan(req, res) {
         if (!execution) {
           return;
         }
-        execution.output.push(`ERROR: ${data.toString()}`);
+        const text = `ERROR: ${data.toString()}`;
+        appendExecutionOutput(execution, text).catch(() => {});
       });
       
       const finalizeExecution = (status, details = {}) => {
@@ -605,6 +830,54 @@ async function handleRunPlan(req, res) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: error.message }));
     }
+  });
+}
+
+async function handleExecutionStream(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const executionId = url.searchParams.get("id");
+  if (!executionId) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "executionId is required" }));
+    return;
+  }
+  const execution = runningExecutions.get(executionId);
+  if (!execution) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Execution not found" }));
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive"
+  });
+  res.write("\n");
+
+  let cursor = 0;
+  const flushOutput = () => {
+    if (!execution || !Array.isArray(execution.output)) {
+      return;
+    }
+    while (cursor < execution.output.length) {
+      const chunk = execution.output[cursor];
+      cursor += 1;
+      res.write(`data: ${JSON.stringify({ type: "log", text: chunk })}\n\n`);
+    }
+  };
+
+  const timer = setInterval(() => {
+    flushOutput();
+    if (execution.status !== "running" && cursor >= execution.output.length) {
+      res.write(`data: ${JSON.stringify({ type: "end", status: execution.status })}\n\n`);
+      clearInterval(timer);
+      res.end();
+    }
+  }, 1000);
+
+  req.on("close", () => {
+    clearInterval(timer);
   });
 }
 
@@ -878,6 +1151,8 @@ async function handleRuns(req, res) {
           }
           const status =
             counts.FAIL > 0 ? "FAIL" : counts.SKIPPED > 0 ? "SKIPPED" : "OK";
+          const logsPath = path.join(runsDir, runId, "execution.log");
+          const logsUrl = fs.existsSync(logsPath) ? `/runs/${runId}/execution.log` : "";
           return {
             runId,
             planPath: summary.planPath ?? null,
@@ -892,10 +1167,13 @@ async function handleRuns(req, res) {
             status,
             counts,
             steps: summary.steps?.length ?? 0,
-            cacheHits
+            cacheHits,
+            logsUrl
           };
         } catch (error) {
-          return { runId };
+          const logsPath = path.join(runsDir, runId, "execution.log");
+          const logsUrl = fs.existsSync(logsPath) ? `/runs/${runId}/execution.log` : "";
+          return { runId, logsUrl };
         }
       })
     );

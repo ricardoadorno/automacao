@@ -1,3 +1,6 @@
+const fs = require("fs");
+const path = require("path");
+
 function sanitizeReportName(input) {
   const raw = String(input || "").trim().toLowerCase().replace(/\s+/g, "-");
   const cleaned = raw.replace(/[^a-z0-9-_]/g, "");
@@ -155,7 +158,8 @@ function resolveEvidence(block, runSummary, runId) {
     return {
       filename: block.filename,
       url,
-      kind: guessKind(block.filename)
+      kind: guessKind(block.filename),
+      filePath: resolveEvidencePath(url)
     };
   }
   const steps = Array.isArray(runSummary.steps) ? runSummary.steps : [];
@@ -172,17 +176,27 @@ function resolveEvidence(block, runSummary, runId) {
   return {
     filename,
     url,
-    kind: guessKind(filename)
+    kind: guessKind(filename),
+    filePath: resolveEvidencePath(url)
   };
+}
+
+function resolveEvidencePath(url) {
+  if (!url || typeof url !== "string") {
+    return "";
+  }
+  const cleaned = url.startsWith("/") ? url.slice(1) : url;
+  return path.join(process.cwd(), cleaned);
 }
 
 function buildReportDocx(report, runSummary, runId) {
   const normalized = normalizeReport(report);
-  const documentXml = buildDocumentXml(normalized, runSummary, runId);
+  const document = buildDocumentXml(normalized, runSummary, runId);
+  const images = document.images;
   const entries = [
     {
       name: "[Content_Types].xml",
-      data: Buffer.from(buildContentTypesXml(), "utf-8")
+      data: Buffer.from(buildContentTypesXml(images), "utf-8")
     },
     {
       name: "_rels/.rels",
@@ -190,17 +204,26 @@ function buildReportDocx(report, runSummary, runId) {
     },
     {
       name: "word/document.xml",
-      data: Buffer.from(documentXml, "utf-8")
+      data: Buffer.from(document.xml, "utf-8")
     },
     {
       name: "word/_rels/document.xml.rels",
-      data: Buffer.from(buildDocumentRelsXml(), "utf-8")
+      data: Buffer.from(buildDocumentRelsXml(images), "utf-8")
     }
   ];
+  images.forEach((image) => {
+    entries.push({
+      name: `word/media/${image.name}`,
+      data: image.data
+    });
+  });
   return createZip(entries);
 }
 
 function buildDocumentXml(report, runSummary, runId) {
+  const images = [];
+  let imageIndex = 1;
+  let docPrId = 1;
   const paragraphs = report.blocks
     .filter((block) => block.enabled)
     .map((block) => {
@@ -219,10 +242,24 @@ function buildDocumentXml(report, runSummary, runId) {
       if (block.type === "evidence") {
         const selection = resolveEvidence(block, runSummary, runId);
         const label = block.label || "Evidence";
-        const text = selection
-          ? `${label}: ${selection.filename} (${selection.url})`
-          : `${label}: sem evidencia selecionada`;
-        const parts = [buildParagraph(text)];
+        if (!selection) {
+          const text = `${label}: sem evidencia selecionada`;
+          return buildParagraph(text);
+        }
+        const parts = [buildParagraph(label)];
+        if (selection.kind === "image" && selection.filePath && fs.existsSync(selection.filePath)) {
+          const imageEntry = buildImageEntry(selection, imageIndex, docPrId);
+          if (imageEntry) {
+            images.push(imageEntry);
+            parts.push(buildImageParagraph(imageEntry));
+            imageIndex += 1;
+            docPrId += 1;
+          } else {
+            parts.push(buildParagraph(`${selection.url}`));
+          }
+        } else {
+          parts.push(buildParagraph(`${selection.url}`));
+        }
         if (block.caption) {
           parts.push(buildParagraph(block.caption));
         }
@@ -231,13 +268,20 @@ function buildDocumentXml(report, runSummary, runId) {
       return "";
     })
     .join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  return {
+    xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+  xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+  xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
   <w:body>
     ${paragraphs}
     <w:sectPr />
   </w:body>
-</w:document>`;
+</w:document>`,
+    images
+  };
 }
 
 function buildParagraph(text, style) {
@@ -246,12 +290,27 @@ function buildParagraph(text, style) {
   return `<w:p>${styleXml}<w:r><w:t xml:space="preserve">${safe}</w:t></w:r></w:p>`;
 }
 
-function buildContentTypesXml() {
+function buildContentTypesXml(images) {
+  const extensions = new Set(
+    Array.isArray(images)
+      ? images.map((image) => path.extname(image.name).slice(1).toLowerCase()).filter(Boolean)
+      : []
+  );
+  const imageDefaults = [];
+  if (extensions.has("png")) {
+    imageDefaults.push(`<Default Extension="png" ContentType="image/png"/>`);
+  }
+  if (extensions.has("jpg") || extensions.has("jpeg")) {
+    imageDefaults.push(`<Default Extension="jpg" ContentType="image/jpeg"/>`);
+    imageDefaults.push(`<Default Extension="jpeg" ContentType="image/jpeg"/>`);
+  }
+  const extra = imageDefaults.length > 0 ? `\n  ${imageDefaults.join("\n  ")}` : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+  ${extra}
 </Types>`;
 }
 
@@ -262,9 +321,135 @@ function buildRelsXml() {
 </Relationships>`;
 }
 
-function buildDocumentRelsXml() {
+function buildDocumentRelsXml(images) {
+  const rels = Array.isArray(images)
+    ? images
+        .map(
+          (image) =>
+            `<Relationship Id="${image.relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${image.name}"/>`
+        )
+        .join("")
+    : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`;
+}
+
+function buildImageEntry(selection, imageIndex, docPrId) {
+  const buffer = readImage(selection.filePath);
+  if (!buffer) {
+    return null;
+  }
+  const ext = path.extname(selection.filePath || "").toLowerCase() || ".png";
+  const name = `image${imageIndex}${ext}`;
+  const { widthEmu, heightEmu } = resolveImageSize(buffer);
+  return {
+    name,
+    data: buffer,
+    relId: `rId${imageIndex}`,
+    docPrId,
+    widthEmu,
+    heightEmu
+  };
+}
+
+function buildImageParagraph(image) {
+  return `<w:p>
+  <w:r>
+    <w:drawing>
+      <wp:inline distT="0" distB="0" distL="0" distR="0">
+        <wp:extent cx="${image.widthEmu}" cy="${image.heightEmu}"/>
+        <wp:docPr id="${image.docPrId}" name="Picture ${image.docPrId}"/>
+        <a:graphic>
+          <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+            <pic:pic>
+              <pic:nvPicPr>
+                <pic:cNvPr id="0" name="${escapeXml(image.name)}"/>
+                <pic:cNvPicPr/>
+              </pic:nvPicPr>
+              <pic:blipFill>
+                <a:blip r:embed="${image.relId}"/>
+                <a:stretch><a:fillRect/></a:stretch>
+              </pic:blipFill>
+              <pic:spPr>
+                <a:xfrm>
+                  <a:off x="0" y="0"/>
+                  <a:ext cx="${image.widthEmu}" cy="${image.heightEmu}"/>
+                </a:xfrm>
+                <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+              </pic:spPr>
+            </pic:pic>
+          </a:graphicData>
+        </a:graphic>
+      </wp:inline>
+    </w:drawing>
+  </w:r>
+</w:p>`;
+}
+
+function readImage(filePath) {
+  try {
+    return fs.readFileSync(filePath);
+  } catch (error) {
+    return null;
+  }
+}
+
+function resolveImageSize(buffer) {
+  const fallback = { widthPx: 600, heightPx: 360 };
+  const size = readPngSize(buffer) || readJpegSize(buffer) || fallback;
+  const maxWidthPx = 600;
+  const scale = size.widthPx > maxWidthPx ? maxWidthPx / size.widthPx : 1;
+  const widthPx = Math.round(size.widthPx * scale);
+  const heightPx = Math.round(size.heightPx * scale);
+  return {
+    widthEmu: pxToEmu(widthPx),
+    heightEmu: pxToEmu(heightPx)
+  };
+}
+
+function pxToEmu(px) {
+  return Math.round(px * 9525);
+}
+
+function readPngSize(buffer) {
+  if (!buffer || buffer.length < 24) {
+    return null;
+  }
+  const signature = buffer.toString("hex", 0, 8);
+  if (signature !== "89504e470d0a1a0a") {
+    return null;
+  }
+  const width = buffer.readUInt32BE(16);
+  const height = buffer.readUInt32BE(20);
+  if (!width || !height) {
+    return null;
+  }
+  return { widthPx: width, heightPx: height };
+}
+
+function readJpegSize(buffer) {
+  if (!buffer || buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
+    return null;
+  }
+  let offset = 2;
+  while (offset < buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = buffer[offset + 1];
+    const length = buffer.readUInt16BE(offset + 2);
+    if (marker >= 0xc0 && marker <= 0xc3) {
+      const height = buffer.readUInt16BE(offset + 5);
+      const width = buffer.readUInt16BE(offset + 7);
+      if (!width || !height) {
+        return null;
+      }
+      return { widthPx: width, heightPx: height };
+    }
+    offset += 2 + length;
+  }
+  return null;
 }
 
 function escapeXml(text) {

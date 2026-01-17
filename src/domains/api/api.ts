@@ -144,11 +144,14 @@ async function buildApiEvidenceHtml(
 
   // Build request body
   const requestBody = data.request.body
-    ? buildSectionHtml("Request body", buildCodeBlock(data.request.body))
+    ? buildSectionHtml("Request body", buildCodeBlock(data.request.body, "request"))
     : "";
 
   // Build response body
-  const responseBody = buildSectionHtml("Response body", buildCodeBlock(data.response.body));
+  const responseBody = buildSectionHtml(
+    "Response body",
+    buildCodeBlock(data.response.body, "response")
+  );
 
   const descriptionBlock = step.description
     ? `<div class="description">${escapeHtml(step.description)}</div>`
@@ -157,6 +160,7 @@ async function buildApiEvidenceHtml(
   // Replace all placeholders
   template = template
     .replace(/{{STEP_ID}}/g, step.id || step.type)
+    .replace(/{{STEP_TYPE}}/g, step.type)
     .replace(/{{METHOD}}/g, data.request.method)
     .replace(/{{URL}}/g, escapeHtml(data.request.url))
     .replace(/{{TIMESTAMP}}/g, timestamp)
@@ -174,7 +178,7 @@ async function buildApiEvidenceHtml(
 /**
  * Build code block
  */
-function buildCodeBlock(content?: string): string {
+function buildCodeBlock(content?: string, section?: "request" | "response"): string {
   if (!content) {
     return '<div class="empty-state">No content</div>';
   }
@@ -188,7 +192,8 @@ function buildCodeBlock(content?: string): string {
     // Not JSON, use as is
   }
 
-  return `<pre class="code-block">${escapeHtml(formatted)}</pre>`;
+  const attrs = section ? ` data-section="${section}"` : "";
+  return `<pre class="code-block"${attrs}>${escapeHtml(formatted)}</pre>`;
 }
 
 function buildSectionHtml(title: string, bodyHtml: string): string {
@@ -230,6 +235,9 @@ function getApiTemplate(): string {
     .summary-line { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 4px; }
     .summary-line:last-child { margin-bottom: 0; }
     .summary-label { color: #6a6f76; text-transform: uppercase; letter-spacing: 0.4px; font-size: 10px; margin-right: 4px; }
+    .toolbar { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid #eee9df; background: #fff; }
+    .btn { border: 1px solid #d0c9bc; background: #f7f4ee; color: #1f2328; padding: 6px 10px; border-radius: 8px; font-size: 10px; text-decoration: none; text-transform: uppercase; letter-spacing: 0.4px; cursor: pointer; }
+    .btn.secondary { background: #fff; }
     .panel { padding: 12px 16px; border-bottom: 1px solid #eee9df; }
     .panel:last-child { border-bottom: none; }
     .panel h2 { font-size: 13px; margin-bottom: 6px; }
@@ -248,6 +256,7 @@ function getApiTemplate(): string {
     <div class="summary">
       <div class="summary-line">
         <span class="summary-label">Step</span>{{STEP_ID}}
+        <span class="summary-label">Type</span>{{STEP_TYPE}}
         <span class="summary-label">Method</span>{{METHOD}}
         <span class="summary-label">Status</span><span class="status-badge status-{{STATUS_CLASS}}">{{STATUS_CODE}} {{STATUS_TEXT}}</span>
         <span class="summary-label">Duration</span>{{DURATION}}
@@ -259,10 +268,48 @@ function getApiTemplate(): string {
         <span class="summary-label">Timestamp</span>{{TIMESTAMP}}
       </div>
     </div>
+    <div class="toolbar">
+      <a class="btn" href="evidence.html" download="evidence.html">Download HTML</a>
+      <button class="btn" id="download-response" type="button">Download response</button>
+      <button class="btn secondary" id="download-request" type="button">Download request</button>
+    </div>
     {{DESCRIPTION_BLOCK}}
     {{RESPONSE_BODY_SECTION}}
     {{REQUEST_BODY_SECTION}}
   </div>
+  <script>
+    (function () {
+      function downloadFromSection(section, filename) {
+        var pre = document.querySelector('pre.code-block[data-section="' + section + '"]');
+        if (!pre) {
+          return;
+        }
+        var text = pre.textContent || "";
+        var blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      }
+
+      var responseBtn = document.getElementById("download-response");
+      if (responseBtn) {
+        responseBtn.addEventListener("click", function () {
+          downloadFromSection("response", "response.txt");
+        });
+      }
+      var requestBtn = document.getElementById("download-request");
+      if (requestBtn) {
+        requestBtn.addEventListener("click", function () {
+          downloadFromSection("request", "request.txt");
+        });
+      }
+    })();
+  </script>
 </body>
 </html>`;
 }

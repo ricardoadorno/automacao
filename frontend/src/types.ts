@@ -49,10 +49,12 @@ export type Plan = {
   steps: PlanStep[];
   config?: PlanConfig;
   inputs?: PlanInputs | null;
+  validationErrors?: Array<{ path: string; message: string }>;
 };
 
 export type Execution = {
   executionId: string;
+  runId?: string;
   planPath: string;
   status: string;
   startedAt?: string;
@@ -78,6 +80,7 @@ export type RunSummary = {
   steps?: number;
   cacheHits?: number;
   counts?: { OK: number; FAIL: number; SKIPPED: number };
+  logsUrl?: string;
 };
 
 export type RunDetailArtifact = {

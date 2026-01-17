@@ -1,0 +1,32 @@
+.select-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+}
+
+.select-field__label {
+  font-size: var(--font-size-small);
+  color: var(--color-text-secondary);
+}
+
+.select {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  font-size: var(--font-size-body);
+  font-family: var(--font-family);
+  color: var(--color-text-main);
+  background: var(--color-surface);
+}
+
+.select:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.select:disabled {
+  background: #F2F2F2;
+  color: #9E9E9E;
+}
