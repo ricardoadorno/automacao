@@ -2,62 +2,62 @@
   "behaviors": {
     "planos-lista": {
       "actions": [
-        { "type": "goto", "url": "{baseUrl}" },
-        { "type": "waitForSelector", "selector": "{plansGridSelector}", "state": "visible" }
+        { "type": "goto", "url": "{{baseUrl}}" },
+        { "type": "waitForSelector", "selector": "{{plansGridSelector}}", "state": "visible" }
       ]
     },
     "plano-detalhe-modal": {
       "actions": [
-        { "type": "goto", "url": "{baseUrl}" },
-        { "type": "waitForSelector", "selector": "{plansGridSelector}", "state": "visible" },
+        { "type": "goto", "url": "{{baseUrl}}" },
+        { "type": "waitForSelector", "selector": "{{plansGridSelector}}", "state": "visible" },
         { "type": "click", "selector": "text=View plan" },
-        { "type": "waitForSelector", "selector": "{planModalSelector}", "state": "visible" }
+        { "type": "waitForSelector", "selector": "{{planModalSelector}}", "state": "visible" }
       ]
     },
     "exemplos-lista": {
       "actions": [
-        { "type": "goto", "url": "{baseUrl}" },
-        { "type": "click", "selector": "{tabExamplesSelector}" },
+        { "type": "goto", "url": "{{baseUrl}}" },
+        { "type": "click", "selector": "{{tabExamplesSelector}}" },
         { "type": "waitForSelector", "selector": "text=Examples", "state": "visible" },
-        { "type": "waitForSelector", "selector": "{plansGridSelector}", "state": "visible" }
+        { "type": "waitForSelector", "selector": "{{plansGridSelector}}", "state": "visible" }
       ]
     },
     "execucoes": {
       "actions": [
-        { "type": "goto", "url": "{baseUrl}" },
-        { "type": "click", "selector": "{tabExecutionsSelector}" },
-        { "type": "waitForSelector", "selector": "{executionsReadySelector}", "state": "visible" }
+        { "type": "goto", "url": "{{baseUrl}}" },
+        { "type": "click", "selector": "{{tabExecutionsSelector}}" },
+        { "type": "waitForSelector", "selector": "{{executionsReadySelector}}", "state": "visible" }
       ]
     },
     "runs": {
       "actions": [
-        { "type": "goto", "url": "{baseUrl}" },
-        { "type": "click", "selector": "{tabRunsSelector}" },
-        { "type": "waitForSelector", "selector": "{runsReadySelector}", "state": "visible" }
+        { "type": "goto", "url": "{{baseUrl}}" },
+        { "type": "click", "selector": "{{tabRunsSelector}}" },
+        { "type": "waitForSelector", "selector": "{{runsReadySelector}}", "state": "visible" }
       ]
     },
     "relatorios": {
       "actions": [
-        { "type": "goto", "url": "{baseUrl}" },
-        { "type": "click", "selector": "{tabReportsSelector}" },
-        { "type": "waitForSelector", "selector": "{reportsReadySelector}", "state": "visible" }
+        { "type": "goto", "url": "{{baseUrl}}" },
+        { "type": "click", "selector": "{{tabReportsSelector}}" },
+        { "type": "waitForSelector", "selector": "{{reportsReadySelector}}", "state": "visible" }
       ]
     },
     "relatorio-evidencia-modal": {
       "actions": [
-        { "type": "goto", "url": "{baseUrl}" },
-        { "type": "click", "selector": "{tabReportsSelector}" },
-        { "type": "waitForSelector", "selector": "{reportsReadySelector}", "state": "visible" },
-        { "type": "click", "selector": "{reportsAddEvidenceSelector}" },
-        { "type": "click", "selector": "{reportsChooseEvidenceSelector}" },
-        { "type": "waitForSelector", "selector": "{reportEvidenceModalSelector}", "state": "visible" }
+        { "type": "goto", "url": "{{baseUrl}}" },
+        { "type": "click", "selector": "{{tabReportsSelector}}" },
+        { "type": "waitForSelector", "selector": "{{reportsReadySelector}}", "state": "visible" },
+        { "type": "click", "selector": "{{reportsAddEvidenceSelector}}" },
+        { "type": "click", "selector": "{{reportsChooseEvidenceSelector}}" },
+        { "type": "waitForSelector", "selector": "{{reportEvidenceModalSelector}}", "state": "visible" }
       ]
     },
     "gatilhos": {
       "actions": [
-        { "type": "goto", "url": "{baseUrl}" },
-        { "type": "click", "selector": "{tabTriggersSelector}" },
-        { "type": "waitForSelector", "selector": "{triggersReadySelector}", "state": "visible" }
+        { "type": "goto", "url": "{{baseUrl}}" },
+        { "type": "click", "selector": "{{tabTriggersSelector}}" },
+        { "type": "waitForSelector", "selector": "{{triggersReadySelector}}", "state": "visible" }
       ]
     }
   }

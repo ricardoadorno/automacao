@@ -39,7 +39,7 @@ Data: 2026-01-15
         "specialist": {
           "task": "writeFile",
           "outputPath": "note.txt",
-          "content": "run {runId}"
+          "content": "run {{runId}}"
         }
       }
     }

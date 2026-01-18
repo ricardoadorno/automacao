@@ -17,6 +17,7 @@ Use este guia para localizar evidencias e entender o que cada step gera.
 - CLI: `stdout.txt`, `stderr.txt`, `metadata.json`, `evidence.html`
 - Specialist: arquivo gerado pelo step
 - Logstream: `evidence.html`
+- Em erro: `error.json`, `error.png` (sempre que um step falha)
 
 ## Como abrir
 
@@ -27,7 +28,8 @@ Use este guia para localizar evidencias e entender o que cada step gera.
 
 - Compare `status` e `durationMs` no `metadata.json`.
 - Em SQL, confira `result.csv` e `expectRows`.
-- Em API, valide o `evidence.html` e `response.json` quando existir.
+- Em API, valide o `evidence.html`, `statusCode` e o corpo retornado.
+- Em falha, consulte `outputs.error` e `outputs.errorScreenshot`.
 
 ## Dicas
 

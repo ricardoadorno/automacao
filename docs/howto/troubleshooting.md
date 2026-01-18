@@ -33,6 +33,11 @@
 - Abra `runs/<runId>/00_runSummary.json` e valide status.
 - Para browser, confirme o `behaviorId` no `behaviors.json`.
 
+### Erro sem detalhe
+- Confira `runs/<runId>/steps/<nn_stepId>/error.json`.
+- Abra `error.png` para screenshot do erro quando houver browser/tabular.
+- Veja `metadata.json` e `outputs.error`/`outputs.errorScreenshot`.
+
 ## Logs uteis
 
 - `runs/<runId>/00_runSummary.json`

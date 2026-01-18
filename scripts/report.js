@@ -91,9 +91,17 @@ function normalizeReport(report) {
 
 function buildReportHtml(report, runSummary, runId) {
   const normalized = normalizeReport(report);
-  const body = normalized.blocks
-    .filter((block) => block.enabled)
-    .map((block) => renderHtmlBlock(block, runSummary, runId))
+  const blocks = normalized.blocks.filter((block) => block.enabled);
+  let currentIndent = 0;
+  const body = blocks
+    .map((block) => {
+      const headingLevel = getHeadingLevel(block.type);
+      const indentLevel = headingLevel ? getIndentLevel(headingLevel) : currentIndent;
+      if (headingLevel) {
+        currentIndent = headingLevel;
+      }
+      return renderHtmlBlock(block, runSummary, runId, indentLevel);
+    })
     .join("\n");
   return `<!doctype html>
 <html>
@@ -104,6 +112,8 @@ function buildReportHtml(report, runSummary, runId) {
     body { font-family: Arial, "Helvetica Neue", Helvetica, sans-serif; padding: 32px; color: #1d2126; line-height: 1.5; }
     h1 { font-size: 26px; margin: 0 0 8px; letter-spacing: 0.3px; color: #101827; }
     h2 { font-size: 18px; margin: 18px 0 6px; letter-spacing: 0.2px; color: #101827; }
+    h3 { font-size: 16px; margin: 16px 0 6px; letter-spacing: 0.2px; color: #101827; }
+    h4 { font-size: 14px; margin: 14px 0 6px; letter-spacing: 0.2px; color: #101827; text-transform: uppercase; }
     p { margin: 6px 0 12px; font-size: 14px; }
     small { display: block; font-size: 12px; color: #5f6368; margin-bottom: 10px; }
     .evidence { padding: 12px; border: 1px solid #dcd6cc; border-radius: 12px; margin: 12px 0; }
@@ -118,23 +128,30 @@ ${body}
 </html>`;
 }
 
-function renderHtmlBlock(block, runSummary, runId) {
+function renderHtmlBlock(block, runSummary, runId, indentLevel) {
+  const indentStyle = indentLevel ? ` style="margin-left: ${indentLevel * 16}px"` : "";
   if (block.type === "h1") {
     return `<h1>${escapeHtml(block.text)}</h1>`;
   }
   if (block.type === "h2") {
     return `<h2>${escapeHtml(block.text)}</h2>`;
   }
+  if (block.type === "h3") {
+    return `<h3>${escapeHtml(block.text)}</h3>`;
+  }
+  if (block.type === "h4") {
+    return `<h4>${escapeHtml(block.text)}</h4>`;
+  }
   if (block.type === "p") {
-    return `<p>${escapeHtml(block.text)}</p>`;
+    return `<p${indentStyle}>${escapeHtml(block.text)}</p>`;
   }
   if (block.type === "small") {
-    return `<small>${escapeHtml(block.text)}</small>`;
+    return `<small${indentStyle}>${escapeHtml(block.text)}</small>`;
   }
   if (block.type === "evidence") {
     const selection = resolveEvidence(block, runSummary, runId);
     if (!selection) {
-      return `<div class="evidence"><strong>${escapeHtml(block.label || "Evidence")}</strong><p>Sem evidencia selecionada.</p></div>`;
+      return `<div class="evidence"${indentStyle}><strong>${escapeHtml(block.label || "Evidence")}</strong><p>Sem evidencia selecionada.</p></div>`;
     }
     const filename = `<div>${escapeHtml(selection.filename)}</div>`;
     const caption = block.caption ? `<div class="caption">${escapeHtml(block.caption)}</div>` : "";
@@ -144,9 +161,25 @@ function renderHtmlBlock(block, runSummary, runId) {
         : selection.kind === "html"
         ? `<div><iframe src="${selection.url}"></iframe></div>`
         : filename;
-    return `<div class="evidence"><strong>${escapeHtml(block.label || "Evidence")}</strong>${preview}${caption}</div>`;
+    return `<div class="evidence"${indentStyle}><strong>${escapeHtml(block.label || "Evidence")}</strong>${preview}${caption}</div>`;
   }
   return "";
+}
+
+function getHeadingLevel(type) {
+  if (type === "h1") return 1;
+  if (type === "h2") return 2;
+  if (type === "h3") return 3;
+  if (type === "h4") return 4;
+  return 0;
+}
+
+function getIndentLevel(headingLevel) {
+  if (headingLevel <= 1) return 0;
+  if (headingLevel === 2) return 1;
+  if (headingLevel === 3) return 2;
+  if (headingLevel === 4) return 3;
+  return Math.max(0, headingLevel - 1);
 }
 
 function resolveEvidence(block, runSummary, runId) {
@@ -221,17 +254,24 @@ function buildReportDocx(report, runSummary, runId) {
 }
 
 function buildDocumentXml(report, runSummary, runId) {
+  const normalized = normalizeReport(report);
   const images = [];
   let imageIndex = 1;
   let docPrId = 1;
-  const paragraphs = report.blocks
+  const paragraphs = normalized.blocks
     .filter((block) => block.enabled)
     .map((block) => {
       if (block.type === "h1") {
-        return buildParagraph(block.text, "Heading1");
+        return buildHeadingParagraph(block.text, "Heading1", 36);
       }
       if (block.type === "h2") {
-        return buildParagraph(block.text, "Heading2");
+        return buildHeadingParagraph(block.text, "Heading2", 28);
+      }
+      if (block.type === "h3") {
+        return buildHeadingParagraph(block.text, "Heading3", 24);
+      }
+      if (block.type === "h4") {
+        return buildHeadingParagraph(block.text, "Heading4", 20, { uppercase: true });
       }
       if (block.type === "p") {
         return buildParagraph(block.text);
@@ -288,6 +328,17 @@ function buildParagraph(text, style) {
   const safe = escapeXml(text || "");
   const styleXml = style ? `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>` : "";
   return `<w:p>${styleXml}<w:r><w:t xml:space="preserve">${safe}</w:t></w:r></w:p>`;
+}
+
+function buildHeadingParagraph(text, style, sizeHalfPoints, options = {}) {
+  const raw = text || "";
+  const content = options.uppercase ? String(raw).toUpperCase() : raw;
+  const safe = escapeXml(content);
+  const styleXml = style ? `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>` : "";
+  const sizeXml = sizeHalfPoints
+    ? `<w:rPr><w:b/><w:sz w:val="${sizeHalfPoints}"/><w:szCs w:val="${sizeHalfPoints}"/></w:rPr>`
+    : "<w:rPr><w:b/></w:rPr>";
+  return `<w:p>${styleXml}<w:r>${sizeXml}<w:t xml:space="preserve">${safe}</w:t></w:r></w:p>`;
 }
 
 function buildContentTypesXml(images) {

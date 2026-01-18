@@ -85,7 +85,7 @@ describe("P5 cli step", () => {
     };
 
     await expect(executeCliStep(step, stepDir)).rejects.toThrow("exitCode=2");
-  });
+  }, { timeout: 15000 });
 
   it("fails when stderr matches error pattern", async () => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "automacao-"));

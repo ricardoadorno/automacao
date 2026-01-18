@@ -64,6 +64,7 @@ Evoluir o Design System do app a partir do artefato `UI.md`, garantindo fidelida
   - variantes: `primary | secondary | ghost`
   - tamanhos: `sm | md`
   - `disabled` e icone opcional
+  - icones devem vir de `lucide-react`
 - Card
   - borda + `shadow-subtle` + `radius-md`
 - Badge
@@ -77,6 +78,7 @@ Evoluir o Design System do app a partir do artefato `UI.md`, garantindo fidelida
 - Sem novas cores dominantes e sem trocar fonte base.
 - Sem Kanban, sem hero banners, sem secoes promocionais, sem charts.
 - Foco em listas, tabelas, cards, filtros, modais e drawers.
+- Para icones, use apenas `lucide-react` (sem SVG inline avulso).
 
 ## Referencias
 

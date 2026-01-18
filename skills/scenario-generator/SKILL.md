@@ -86,7 +86,7 @@ Exemplo de trecho:
     "login": {
       "actions": [
         { "type": "goto", "url": "https://app.exemplo.com" },
-        { "type": "fill", "selector": "#email", "text": "{userEmail}" },
+        { "type": "fill", "selector": "#email", "text": "{{userEmail}}" },
         { "type": "click", "selector": "button[type=submit]" },
         { "type": "waitForResponse", "url": "/api/session", "status": 200 }
       ]
@@ -94,6 +94,18 @@ Exemplo de trecho:
   }
 }
 ```
+
+## Variaveis e env
+
+- Use sempre `{{chave}}` (mustache) para interpolar contexto.
+- Se precisar de env, inclua `inputs.envPrefix` e mencione `.env`.
+- Exemplo `.env`: `AUTO_TOKEN=abc` vira `{{TOKEN}}` no contexto.
+
+## Erros e validacoes
+
+- SQL pode falhar com `expectRows` ou query invalida.
+- CLI falha com `exitCode` e `errorPatterns`.
+- API so falha em erros de rede/timeout; se precisar falhar em 4xx/5xx, deixe isso explicito no plan (ex: validar com `exports` + `requires`).
 
 ## SQL evidence
 

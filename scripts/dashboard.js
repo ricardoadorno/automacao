@@ -723,7 +723,7 @@ async function handleRunPlan(req, res) {
   req.on("data", chunk => { body += chunk; });
   req.on("end", async () => {
     try {
-      const { planPath, fromStep, toStep, selectedSteps, inputs } = JSON.parse(body);
+        const { planPath, fromStep, toStep, selectedSteps, inputs, resumeFrom } = JSON.parse(body);
       
       if (!planPath) {
         res.writeHead(400, { "Content-Type": "application/json" });
@@ -747,7 +747,8 @@ async function handleRunPlan(req, res) {
       const rangeFlags = buildRangeFlags(range);
       const stepsFlags = buildStepsFlags(steps);
       const runnerCommand = resolveRunnerCommand();
-      const command = `${runnerCommand} --plan "${safePlanPath}" --out runs${rangeFlags}${stepsFlags}${planSourceFlag}`;
+        const resumeFlag = resumeFrom ? ` --resume "${String(resumeFrom).replace(/"/g, '\\"')}"` : "";
+        const command = `${runnerCommand} --plan "${safePlanPath}" --out runs${rangeFlags}${stepsFlags}${planSourceFlag}${resumeFlag}`;
       
         // Execute in background
         const child = exec(command, { cwd: process.cwd() });
@@ -757,13 +758,14 @@ async function handleRunPlan(req, res) {
           status: "running",
           startedAt: new Date().toISOString(),
           output: [],
-          logBuffer: [],
-          runId: "",
-          fromStep: range?.fromStep,
-          toStep: range?.toStep,
-          selectedSteps: steps ?? null,
-          child
-        });
+            logBuffer: [],
+            runId: "",
+            fromStep: range?.fromStep,
+            toStep: range?.toStep,
+            selectedSteps: steps ?? null,
+            resumeFrom: resumeFrom ? String(resumeFrom) : null,
+            child
+          });
       
       child.stdout.on("data", (data) => {
         const execution = runningExecutions.get(executionId);
@@ -820,11 +822,12 @@ async function handleRunPlan(req, res) {
       res.end(JSON.stringify({ 
         executionId,
         message: "Execution started",
-        planPath,
-        fromStep: range?.fromStep,
-        toStep: range?.toStep,
-        selectedSteps: steps ?? null
-      }));
+          planPath,
+          fromStep: range?.fromStep,
+          toStep: range?.toStep,
+          selectedSteps: steps ?? null,
+          resumeFrom: resumeFrom ? String(resumeFrom) : null
+        }));
       
     } catch (error) {
       res.writeHead(500, { "Content-Type": "application/json" });
@@ -1159,6 +1162,7 @@ async function handleRuns(req, res) {
             fromStep: summary.fromStep ?? null,
             toStep: summary.toStep ?? null,
             selectedSteps: summary.selectedSteps ?? null,
+            resumeFrom: summary.resumeFrom ?? null,
             feature: summary.feature ?? "",
             ticket: summary.ticket ?? "",
             env: summary.env ?? "",

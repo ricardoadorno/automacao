@@ -37,7 +37,7 @@
         "specialist": {
           "task": "writeFile",
           "outputPath": "note.txt",
-          "content": "{message} {name} token {token}"
+          "content": "{{message}} {{name}} token {{token}}"
         }
       }
     },

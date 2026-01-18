@@ -152,9 +152,23 @@ describe("P2 dashboard e2e", () => {
       );
       await page.click("[data-testid='report-modal-confirm']");
 
-      await page.waitForSelector(".report-preview-body iframe");
-      const previewText = await page.locator(".report-preview-body").innerText();
+      await page.click("text=Preview");
+      await page.waitForSelector(".report-preview-modal");
+      await page.waitForSelector(".report-preview-modal .report-preview-body iframe");
+      const previewText = await page.locator(".report-preview-modal .report-preview-body").innerText();
       expect(previewText).toContain("Relatorio E2E");
+
+      await page.click("text=Close");
+      await page.click("text=Export");
+      await page.waitForSelector(".report-export-modal");
+      await page.click(".report-export-modal .report-generate");
+      await page.waitForSelector(".report-export-card a");
+      const htmlLink = await page.getAttribute(".report-export-card a:has-text('Open')", "href");
+      expect(htmlLink).toContain("/runs/");
+      const response = await fetch(`${BASE_URL}${htmlLink}`);
+      expect(response.ok).toBe(true);
+      const htmlBody = await response.text();
+      expect(htmlBody).toContain("Relatorio E2E");
 
       await browser.close();
     },

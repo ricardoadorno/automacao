@@ -44,10 +44,10 @@ describe("P2 inputs", () => {
     const outDir = path.join(tempRoot, "runs");
     const plan: Plan = {
       metadata: { feature: "inputs" },
-      context: { FOO: "plan" },
+      context: { FOO: "plan", BAR: "plan" },
       inputs: {
         defaults: { FOO: "default" },
-        overrides: { FOO: "override" },
+        overrides: { FOO: "override", BAR: "override" },
         envPrefix: "AUTO_"
       },
       steps: [{ id: "step-1", type: "api" }]
@@ -60,6 +60,7 @@ describe("P2 inputs", () => {
     const summary = JSON.parse(summaryRaw);
 
     expect(summary.context.FOO).toBe("env");
+    expect(summary.context.BAR).toBe("plan");
 
     if (original === undefined) {
       delete process.env.AUTO_FOO;

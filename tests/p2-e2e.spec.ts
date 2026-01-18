@@ -51,7 +51,7 @@ describe("P2 e2e plan flow", () => {
       JSON.stringify({
         behaviors: {
           fill: {
-            actions: [{ type: "fill", selector: "#token", text: "{token}" }]
+            actions: [{ type: "fill", selector: "#token", text: "{{token}}" }]
           }
         }
       }),

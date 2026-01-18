@@ -42,7 +42,8 @@ scenarios/<slug-do-plan>/
 3) Declare `behaviorsPath` e `curlPath` se houver browser ou api.
 4) Se for browser, crie `behaviors.json`.
 5) Se for API, crie um arquivo `.curl` e use `request` no step.
-5) Rode:
+6) Use `{{variavel}}` para interpolar contexto em strings.
+7) Rode:
    - `npm start -- --plan scenarios/seu-plan/plan.json --out runs`
 
 ## Caminhos relativos

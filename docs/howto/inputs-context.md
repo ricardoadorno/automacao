@@ -5,10 +5,11 @@ Use este guia para injetar dados nos plans, criar defaults e usar variaveis de a
 
 ## Precedencia
 
-1) `env` (com prefixo)
-2) `context` do plan
-3) `inputs.overrides`
-4) `inputs.defaults`
+1) `inputs.defaults`
+2) `inputs.overrides`
+3) `context` do plan
+4) `env` (com prefixo)
+5) Campos base (`runId`, `startedAt`, `feature`, `ticket`, `env`)
 
 ## Campos suportados
 
@@ -55,6 +56,17 @@ Resultado esperado no contexto:
   "BASEURL": "https://api.exemplo.local",
   "TENANT": "dev"
 }
+```
+
+## Interpolacao de variaveis (mustache)
+
+- Use sempre `{{chave}}` em qualquer campo que aceite string.
+- Funciona em steps, behaviors, SQL, CLI e curl (ex: `{{token}}`).
+- Se a chave nao existir, o step falha com erro.
+
+Exemplo:
+```json
+{ "type": "browser", "behaviorId": "login", "description": "Login {{tenant}}" }
 ```
 
 ## Exports

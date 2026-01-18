@@ -51,7 +51,7 @@ describe("P2 context and exports", () => {
       JSON.stringify({
         behaviors: {
           fill: {
-            actions: [{ type: "fill", selector: "#pedido", text: "{pedidoId}" }]
+            actions: [{ type: "fill", selector: "#pedido", text: "{{pedidoId}}" }]
           }
         }
       }),

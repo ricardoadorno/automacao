@@ -45,6 +45,14 @@ Use este guia para entender o que cada tipo de step faz e como configurar.
 - `requires` para garantir contexto.
 - `exports` para propagar dados.
 - `label` para descricao amigavel no dashboard.
+- Variaveis: use sempre `{{chave}}` para interpolar contexto.
+
+## Erros e validacoes
+
+- Falhas de API por rede/timeout geram `FAIL` e `error.json`.
+- HTTP 4xx/5xx nao falham automaticamente; valide via `exports` + `requires` ou regras externas.
+- SQL falha quando `expectRows` nao bate ou query invalida.
+- CLI pode falhar por `exitCode` ou `errorPatterns`.
 
 ## Exemplos
 
@@ -60,7 +68,7 @@ CLI:
 
 Specialist:
 ```json
-{ "type": "specialist", "config": { "specialist": { "task": "writeFile", "outputPath": "note.txt", "content": "run {runId}" } } }
+{ "type": "specialist", "config": { "specialist": { "task": "writeFile", "outputPath": "note.txt", "content": "run {{runId}}" } } }
 ```
 
 Logstream:

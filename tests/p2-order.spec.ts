@@ -67,7 +67,7 @@ describe("P2 order and chaining", () => {
       JSON.stringify({
         behaviors: {
           browser: {
-            actions: [{ type: "goto", url: "https://httpbin.org/anything?cid={correlationId}" }]
+            actions: [{ type: "goto", url: "https://httpbin.org/anything?cid={{correlationId}}" }]
           }
         }
       }),
@@ -115,7 +115,7 @@ describe("P2 order and chaining", () => {
       behaviorsPath,
       JSON.stringify({
         behaviors: {
-          browser: { actions: [{ type: "goto", url: "https://httpbin.org/anything?cid={correlationId}" }] }
+          browser: { actions: [{ type: "goto", url: "https://httpbin.org/anything?cid={{correlationId}}" }] }
         }
       }),
       "utf-8"

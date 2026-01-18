@@ -43,6 +43,7 @@ async function main(): Promise<void> {
   const fromStep = readIntArg("--from");
   const toStep = readIntArg("--to");
   const selectedSteps = readStepsArg();
+  const resumeFrom = readStringArg("--resume");
 
   if (!planPath) {
     console.error("Missing --plan <path>");
@@ -55,7 +56,8 @@ async function main(): Promise<void> {
     fromStep,
     toStep,
     planPath: planSource ?? planPath,
-    selectedSteps
+    selectedSteps,
+    resumeFrom
   });
 }
 

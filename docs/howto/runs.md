@@ -24,6 +24,7 @@ Campos comuns em `00_runSummary.json`:
 - `feature`, `ticket`, `env`: metadados do plan.
 - `steps[]`: status de cada step (OK/FAIL/SKIPPED).
 - `selectedSteps`: lista de steps executados quando voce seleciona manualmente.
+- `resumeFrom`: runId ou caminho usado para reusar contexto anterior.
 - `startedAt` e `finishedAt`: timestamps do run.
 
 ## Artefatos do step
@@ -31,6 +32,7 @@ Campos comuns em `00_runSummary.json`:
 Cada step gera uma pasta com:
 - `metadata.json` com status, duracao e outputs.
 - Evidencias especificas (ver `docs/howto/evidence.md`).
+ - Em erro: `error.json` e `error.png`, com `outputs.error` e `outputs.errorScreenshot`.
 
 ## Fail policy
 
@@ -47,6 +49,13 @@ Exemplo:
 ## Reutilizar outputs
 
 Use `exports` para exportar dados e reutilizar em steps seguintes. Consulte `docs/howto/inputs-context.md`.
+
+## Reexecutar com contexto anterior
+
+Use `--resume` para carregar o contexto do ultimo run e repetir apenas alguns steps:
+```
+npm start -- --plan scenarios/full-flow/plan.json --out runs --steps 4 --resume run-123
+```
 
 ## Onde abrir evidencias
 

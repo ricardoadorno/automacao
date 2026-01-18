@@ -4,9 +4,10 @@ import { runActions } from "../src/domains/browser/actions";
 
 describe("P2 browser wait actions", () => {
   it("waits for request by url", async () => {
-    const waitForRequest = vi.fn(async (predicate: (url: string) => boolean, options: { timeout: number }) => {
+    const waitForRequest = vi.fn(async (predicate: (req: { url(): string }) => boolean, options: { timeout: number }) => {
       expect(options.timeout).toBe(15000);
-      expect(predicate("https://example.com/orders/123")).toBe(true);
+      const mockRequest = { url: () => "https://example.com/orders/123" };
+      expect(predicate(mockRequest)).toBe(true);
     });
     const page = { waitForRequest } as unknown as { waitForRequest: typeof waitForRequest };
 

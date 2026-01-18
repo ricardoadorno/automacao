@@ -33,6 +33,14 @@ npm start -- --plan scenarios/full-flow/plan.json --out runs --from 2 --to 4
 - Documente no README do plan quais steps podem ser isolados.
 - Combine com cache para reexecutar partes do fluxo com velocidade.
 
+## Reexecutar usando contexto anterior
+
+Use `--resume` para carregar o contexto do ultimo run e executar apenas alguns steps.
+
+```bash
+npm start -- --plan scenarios/full-flow/plan.json --out runs --steps 4 --resume run-123
+```
+
 ## Dicas
 
 - O dashboard salva a selecao no run summary e o **Run again** reutiliza.

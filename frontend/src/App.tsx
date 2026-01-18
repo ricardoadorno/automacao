@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { ChevronDown, Clock, FlaskConical, FolderOpen, LoaderCircle, Search, Timer } from "lucide-react";
 import { PlanDetail } from "./components/PlanDetail";
+import { ReportsPanel } from "./components/ReportsPanel";
 import { AppShell, Button, Sidebar, Topbar } from "./design-system";
 import {
   parseItemsRows,
@@ -16,6 +18,7 @@ import {
   ReportBlock,
   ReportDocument,
   Range,
+  SavedReport,
   RunDetails,
   RunSummary,
   Trigger
@@ -97,6 +100,8 @@ export default function App() {
   const [reportName, setReportName] = useState("relatorio");
   const [reportBlocks, setReportBlocks] = useState<ReportBlock[]>([]);
   const [reportLinks, setReportLinks] = useState<{ jsonUrl?: string; htmlUrl?: string; docxUrl?: string } | null>(null);
+  const [reportLibrary, setReportLibrary] = useState<SavedReport[]>([]);
+  const [activeReportId, setActiveReportId] = useState<string | null>(null);
   const [evidencePicker, setEvidencePicker] = useState<{
     open: boolean;
     blockId?: string;
@@ -108,6 +113,9 @@ export default function App() {
   const [logFilters, setLogFilters] = useState<Record<string, { level: "all" | "error" }>>({});
   const [minimizedExecutions, setMinimizedExecutions] = useState<Record<string, boolean>>({});
   const [stepsMinimized, setStepsMinimized] = useState<Record<string, boolean>>({});
+  const [executionRerunDrafts, setExecutionRerunDrafts] = useState<Record<string, { steps: string; from: string; to: string }>>({});
+  const [runRerunDrafts, setRunRerunDrafts] = useState<Record<string, { steps: string; from: string; to: string }>>({});
+  const [runStepsExpanded, setRunStepsExpanded] = useState<Record<string, boolean>>({});
   const [triggerForm, setTriggerForm] = useState({
     name: "",
     provider: "eventbridge",
@@ -119,6 +127,10 @@ export default function App() {
   const triggersPollerRef = useRef<number | null>(null);
 
   const hasExecutions = useMemo(() => Object.keys(executions).length > 0, [executions]);
+  const canGenerateReport = useMemo(
+    () => Boolean(getReportBaseRunId(reportBlocks, reportRunId)),
+    [reportBlocks, reportRunId]
+  );
 
   useEffect(() => {
     if (tab === "plans") {
@@ -268,13 +280,82 @@ export default function App() {
   }, [inputsDrafts]);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem("automacao-report-library");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as SavedReport[];
+      if (Array.isArray(parsed)) {
+        const normalized = parsed
+          .filter((item) => item && typeof item === "object")
+          .map((item) => ({
+            id: String(item.id || `report-${Date.now()}`),
+            name: String(item.name || "relatorio"),
+            runId: String(item.runId || ""),
+            blocks: Array.isArray(item.blocks) ? item.blocks : [],
+            createdAt: item.createdAt ? String(item.createdAt) : new Date().toISOString(),
+            updatedAt: item.updatedAt ? String(item.updatedAt) : new Date().toISOString(),
+            exports: item.exports
+              ? {
+                  jsonUrl: item.exports.jsonUrl,
+                  htmlUrl: item.exports.htmlUrl,
+                  docxUrl: item.exports.docxUrl,
+                  generatedAt: item.exports.generatedAt
+                }
+              : undefined
+          }));
+        setReportLibrary(normalized);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("automacao-report-draft");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { name?: string; runId?: string; blocks?: ReportBlock[] };
+      if (parsed && Array.isArray(parsed.blocks) && parsed.blocks.length > 0) {
+        setReportName(String(parsed.name || "relatorio"));
+        if (parsed.runId) {
+          setReportRunId(String(parsed.runId));
+        }
+        setReportBlocks(parsed.blocks);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "automacao-report-draft",
+        JSON.stringify({ name: reportName, runId: reportRunId, blocks: reportBlocks })
+      );
+    } catch {
+      // ignore
+    }
+  }, [reportName, reportRunId, reportBlocks]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("automacao-report-library", JSON.stringify(reportLibrary));
+    } catch {
+      // ignore
+    }
+  }, [reportLibrary]);
+
+  useEffect(() => {
     if (!reportRunId) {
       setReportDetails(null);
       return;
     }
     void loadRunDetails(reportRunId, { setActive: true });
-    setReportLinks(null);
-  }, [reportRunId]);
+    if (!activeReportId) {
+      setReportLinks(null);
+    }
+  }, [reportRunId, activeReportId]);
 
   async function loadPlans() {
     setPlansLoading(true);
@@ -307,6 +388,7 @@ export default function App() {
       switchTab?: boolean;
       selectedSteps?: number[];
       inputs?: PlanInputs;
+      resumeFrom?: string;
     } = {}
   ) {
     try {
@@ -318,6 +400,9 @@ export default function App() {
       }
       if (options.inputs) {
         payload.inputs = options.inputs;
+      }
+      if (options.resumeFrom) {
+        payload.resumeFrom = options.resumeFrom;
       }
       const data = await apiFetch<{ executionId: string; fromStep?: number; toStep?: number }>(
         "/api/run",
@@ -333,7 +418,8 @@ export default function App() {
         status: "running",
         startedAt: new Date().toISOString(),
         fromStep: data.fromStep,
-        toStep: data.toStep
+        toStep: data.toStep,
+        resumeFrom: options.resumeFrom ?? null
       };
       setExecutions((current) => ({ ...current, [execution.executionId]: execution }));
       showToast({ message: "Execution started", tone: "success" });
@@ -601,7 +687,7 @@ export default function App() {
   function addReportBlock(type: ReportBlock["type"]) {
     const id = `block-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const base: ReportBlock = { id, type, enabled: true };
-    if (type === "h1" || type === "h2" || type === "p" || type === "small") {
+    if (type === "h1" || type === "h2" || type === "h3" || type === "h4" || type === "p" || type === "small") {
       base.text = "";
     }
     if (type === "evidence") {
@@ -635,25 +721,135 @@ export default function App() {
     setReportBlocks((current) => current.filter((block) => block.id !== id));
   }
 
-  function buildReportDocument(): ReportDocument {
+  function updateReportLibraryItem(id: string, patch: Partial<SavedReport>) {
+    setReportLibrary((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item))
+    );
+  }
+
+  function saveReportDraft(options: { asNew?: boolean } = {}) {
+    const now = new Date().toISOString();
+    const name = reportName.trim() || "relatorio";
+    const runId = reportRunId;
+    const blocks = reportBlocks;
+    if (options.asNew || !activeReportId) {
+      const id = `report-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      const draft: SavedReport = {
+        id,
+        name,
+        runId,
+        blocks,
+        createdAt: now,
+        updatedAt: now
+      };
+      setReportLibrary((current) => [draft, ...current]);
+      setActiveReportId(id);
+      showToast({ message: "Report saved", tone: "success" });
+      return;
+    }
+    setReportLibrary((current) =>
+      current.map((item) =>
+        item.id === activeReportId
+          ? {
+              ...item,
+              name,
+              runId,
+              blocks,
+              updatedAt: now
+            }
+          : item
+      )
+    );
+    showToast({ message: "Report updated", tone: "success" });
+  }
+
+  function loadReportDraft(id: string) {
+    const draft = reportLibrary.find((item) => item.id === id);
+    if (!draft) {
+      showToast("Report not found");
+      return;
+    }
+    setReportName(draft.name);
+    setReportBlocks(draft.blocks);
+    if (draft.runId) {
+      setReportRunId(draft.runId);
+    }
+    setReportLinks(draft.exports ?? null);
+    setActiveReportId(draft.id);
+    showToast({ message: "Report loaded", tone: "info" });
+  }
+
+  function deleteReportDraft(id: string) {
+    if (!window.confirm("Delete this saved report?")) {
+      return;
+    }
+    setReportLibrary((current) => current.filter((item) => item.id !== id));
+    if (activeReportId === id) {
+      setActiveReportId(null);
+    }
+    showToast({ message: "Report removed", tone: "success" });
+  }
+
+  function startNewReportDraft() {
+    setReportName("relatorio");
+    setReportBlocks([]);
+    setReportLinks(null);
+    setActiveReportId(null);
+  }
+
+  function buildReportDocumentFromValues(
+    name: string | undefined,
+    runId: string | undefined,
+    blocks: ReportBlock[] | undefined
+  ): ReportDocument {
     return {
-      name: reportName.trim() || "relatorio",
-      runId: reportRunId,
-      blocks: reportBlocks
+      name: String(name || "").trim() || "relatorio",
+      runId: String(runId || ""),
+      blocks: Array.isArray(blocks)
+        ? blocks.map((block) => ({
+            ...block,
+            enabled: block.enabled !== false
+          }))
+        : []
     };
   }
 
-  function getReportBaseRunId(blocks: ReportBlock[]) {
-    if (reportRunId) {
-      return reportRunId;
+  function buildReportDocument(): ReportDocument {
+    return buildReportDocumentFromValues(reportName, reportRunId, reportBlocks);
+  }
+
+  function getReportBaseRunId(blocks: ReportBlock[], runId?: string) {
+    if (runId) {
+      return runId;
     }
     const firstEvidence = blocks.find((block) => block.type === "evidence" && block.runId);
     return firstEvidence?.runId ?? "";
   }
 
-  async function generateReport() {
-    const report = buildReportDocument();
-    const baseRunId = getReportBaseRunId(report.blocks);
+  async function generateReport(draft?: SavedReport, overrideBlocks?: ReportBlock[]) {
+    let report: ReportDocument;
+    if (draft) {
+      report = buildReportDocumentFromValues(draft.name, draft.runId || reportRunId, draft.blocks);
+    } else if (overrideBlocks && overrideBlocks.length > 0) {
+      report = buildReportDocumentFromValues(reportName, reportRunId, overrideBlocks);
+    } else if (reportBlocks.length === 0 && activeReportId) {
+      const fallback = reportLibrary.find((item) => item.id === activeReportId);
+      report = buildReportDocumentFromValues(
+        fallback?.name ?? reportName,
+        fallback?.runId || reportRunId,
+        fallback?.blocks ?? reportBlocks
+      );
+    } else if (reportBlocks.length === 0) {
+      const fallback = readDraftFromStorage();
+      report = buildReportDocumentFromValues(
+        fallback?.name ?? reportName,
+        fallback?.runId || reportRunId,
+        fallback?.blocks ?? reportBlocks
+      );
+    } else {
+      report = buildReportDocument();
+    }
+    const baseRunId = getReportBaseRunId(report.blocks, report.runId);
     if (!baseRunId) {
       showToast("Select an evidence before generating");
       return;
@@ -672,6 +868,15 @@ export default function App() {
         }
       );
       setReportLinks(data);
+      if (draft) {
+        updateReportLibraryItem(draft.id, {
+          exports: { ...data, generatedAt: new Date().toISOString() }
+        });
+      } else if (activeReportId) {
+        updateReportLibraryItem(activeReportId, {
+          exports: { ...data, generatedAt: new Date().toISOString() }
+        });
+      }
       showToast({ message: "Report generated", tone: "success" });
     } catch (error) {
       showToast(error);
@@ -704,22 +909,27 @@ export default function App() {
     setEvidencePicker({ open: false });
   }
 
-  function confirmEvidencePicker() {
-    if (!evidencePicker.blockId) {
-      closeEvidencePicker();
-      return;
+  function handleEvidenceSelectionChange(value: { runId: string; stepId: string; filename: string } | null) {
+    setEvidencePicker((current) => ({
+      ...current,
+      runId: value?.runId ?? "",
+      stepId: value?.stepId ?? "",
+      filename: value?.filename ?? ""
+    }));
+  }
+
+  function readDraftFromStorage() {
+    try {
+      const raw = localStorage.getItem("automacao-report-draft");
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as { name?: string; runId?: string; blocks?: ReportBlock[] };
+      if (!parsed || !Array.isArray(parsed.blocks)) {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
     }
-    const step = getRunStep(
-      getRunDetails(reportDetailsByRun, evidencePicker.runId),
-      evidencePicker.stepId
-    );
-    updateReportBlock(evidencePicker.blockId, {
-      runId: evidencePicker.runId,
-      stepId: evidencePicker.stepId,
-      filename: evidencePicker.filename,
-      stepDir: step?.stepDir || ""
-    });
-    closeEvidencePicker();
   }
 
   function toggleStepSelection(planPath: string, stepIndex: number) {
@@ -883,6 +1093,42 @@ export default function App() {
       return changed ? next : current;
     });
   }, [executionList, focusExecutionId]);
+
+  useEffect(() => {
+    if (executionList.length === 0) {
+      return;
+    }
+    setExecutionRerunDrafts((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const execution of executionList) {
+        if (next[execution.executionId]) {
+          continue;
+        }
+        next[execution.executionId] = { steps: "", from: "", to: "" };
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [executionList]);
+
+  useEffect(() => {
+    if (runs.length === 0) {
+      return;
+    }
+    setRunRerunDrafts((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const run of runs) {
+        if (next[run.runId]) {
+          continue;
+        }
+        next[run.runId] = { steps: "", from: "", to: "" };
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [runs]);
   const navItems: Array<{ key: TabKey; label: string }> = [
     { key: "plans", label: "Planos" },
     { key: "examples", label: "Exemplos" },
@@ -957,9 +1203,9 @@ export default function App() {
               <Button variant="ghost" size="sm" onClick={() => setPlanFilter("")}>Clear</Button>
             </div>
             {plansLoading ? (
-              <div className="empty">Loading plans...</div>
+              <div className="empty"><LoaderCircle className="empty__icon" size={16} />Loading plans...</div>
             ) : filteredPlans.length === 0 ? (
-              <div className="empty">No plans found</div>
+              <div className="empty"><Search className="empty__icon" size={16} />No plans found</div>
             ) : (
               <>
                 <div className="grid" data-testid="plans-grid">
@@ -1185,9 +1431,9 @@ export default function App() {
               <Button variant="ghost" size="sm" onClick={() => setExampleFilter("")}>Clear</Button>
             </div>
             {examplesLoading ? (
-              <div className="empty">Loading examples...</div>
+              <div className="empty"><LoaderCircle className="empty__icon" size={16} />Loading examples...</div>
             ) : filteredExamples.length === 0 ? (
-              <div className="empty">No examples found</div>
+              <div className="empty"><FlaskConical className="empty__icon" size={16} />No examples found</div>
             ) : (
               <div className="grid" data-testid="plans-grid">
                 {filteredExamples.map((plan) => {
@@ -1337,7 +1583,9 @@ export default function App() {
                 View runs
               </Button>
             </div>
-            {!hasExecutions && <div className="empty">No executions yet</div>}
+            {!hasExecutions && (
+              <div className="empty"><Clock className="empty__icon" size={16} />No executions yet</div>
+            )}
             {hasExecutions && (
               <div className="stack">
                 {executionList.map((execution) => {
@@ -1345,18 +1593,39 @@ export default function App() {
                   const isMinimized = minimizedExecutions[execution.executionId] ?? false;
                   const isStepsMinimized = stepsMinimized[execution.executionId] ?? false;
                   const statusClass = getExecutionStatusClass(execution.status);
+                  const rerunDraft = executionRerunDrafts[execution.executionId] ?? {
+                    steps: "",
+                    from: "",
+                    to: ""
+                  };
+                  const canResume = Boolean(execution.runId && execution.planPath);
                   return (
-                  <article
-                    className={`card execution-card execution-card--${statusClass} ${isFocused ? "execution-card--active" : ""} ${isMinimized ? "execution-card--min" : ""}`}
-                    key={execution.executionId}
-                  >
-                    <div className="card-header">
-                      <div>
-                        <h3>{execution.planPath}</h3>
-                        <p className="muted">ID {execution.executionId}</p>
+                    <article
+                      className={`card execution-card execution-card--${statusClass} ${isFocused ? "execution-card--active" : ""} ${isMinimized ? "execution-card--min" : ""}`}
+                      key={execution.executionId}
+                    >
+                      <div className="card-header">
+                        <div>
+                          <h3>{execution.planPath}</h3>
+                          <p className="muted">ID {execution.executionId}</p>
+                        </div>
+                        <div className="card-header-actions">
+                          <span className={`pill ${execution.status}`}>{execution.status}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={<ChevronDown size={14} />}
+                            onClick={() =>
+                              setMinimizedExecutions((current) => ({
+                                ...current,
+                                [execution.executionId]: !isMinimized
+                              }))
+                            }
+                          >
+                            {isMinimized ? "Expandir execucao" : "Minimizar execucao"}
+                          </Button>
+                        </div>
                       </div>
-                      <span className={`pill ${execution.status}`}>{execution.status}</span>
-                    </div>
                     {!isMinimized && (
                       <>
                         <div className="meta">
@@ -1367,13 +1636,16 @@ export default function App() {
                               Range {execution.fromStep ?? 1} - {execution.toStep ?? "?"}
                             </span>
                           )}
-                          {execution.selectedSteps && execution.selectedSteps.length > 0 && (
-                            <span>Selected: {execution.selectedSteps.join(", ")}</span>
-                          )}
-                        </div>
-                        <div className="log-filters">
-                          <select
-                            value={logFilters[execution.executionId]?.level ?? "all"}
+                            {execution.selectedSteps && execution.selectedSteps.length > 0 && (
+                              <span>Selected: {execution.selectedSteps.join(", ")}</span>
+                            )}
+                            {execution.resumeFrom && (
+                              <span>Resume: {execution.resumeFrom}</span>
+                            )}
+                          </div>
+                          <div className="log-filters">
+                            <select
+                              value={logFilters[execution.executionId]?.level ?? "all"}
                             onChange={(event) =>
                               setLogFilters((current) => ({
                                 ...current,
@@ -1381,32 +1653,106 @@ export default function App() {
                                   level: event.target.value as "all" | "error"
                                 }
                               }))
-                            }
-                          >
-                            <option value="all">All</option>
-                            <option value="error">Errors</option>
-                          </select>
-                        </div>
-                      </>
-                    )}
+                              }
+                            >
+                              <option value="all">All</option>
+                              <option value="error">Errors</option>
+                            </select>
+                          </div>
+                          {canResume && (
+                            <div className="range execution-resume">
+                              <label>
+                                Steps
+                                <input
+                                  placeholder="1,3,4"
+                                  value={rerunDraft.steps}
+                                  className="execution-resume__steps"
+                                  onChange={(event) =>
+                                    setExecutionRerunDrafts((current) => ({
+                                      ...current,
+                                      [execution.executionId]: {
+                                        ...rerunDraft,
+                                        steps: event.target.value
+                                      }
+                                    }))
+                                  }
+                                />
+                              </label>
+                              <label>
+                                From
+                                <input
+                                  placeholder="1"
+                                  value={rerunDraft.from}
+                                  onChange={(event) =>
+                                    setExecutionRerunDrafts((current) => ({
+                                      ...current,
+                                      [execution.executionId]: {
+                                        ...rerunDraft,
+                                        from: event.target.value
+                                      }
+                                    }))
+                                  }
+                                />
+                              </label>
+                              <label>
+                                To
+                                <input
+                                  placeholder="4"
+                                  value={rerunDraft.to}
+                                  onChange={(event) =>
+                                    setExecutionRerunDrafts((current) => ({
+                                      ...current,
+                                      [execution.executionId]: {
+                                        ...rerunDraft,
+                                        to: event.target.value
+                                      }
+                                    }))
+                                  }
+                                />
+                              </label>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                disabled={execution.status === "running"}
+                                onClick={() => {
+                                  if (!execution.runId) {
+                                    return;
+                                  }
+                                  const steps = parseStepsInput(rerunDraft.steps);
+                                  if (rerunDraft.steps.trim().length > 0 && !steps) {
+                                    showToast({ message: "Selected steps are invalid.", tone: "warning" });
+                                    return;
+                                  }
+                                  const fromStep = parseRangeInput(rerunDraft.from);
+                                  if (rerunDraft.from.trim().length > 0 && fromStep === undefined) {
+                                    showToast({ message: "From step is invalid.", tone: "warning" });
+                                    return;
+                                  }
+                                  const toStep = parseRangeInput(rerunDraft.to);
+                                  if (rerunDraft.to.trim().length > 0 && toStep === undefined) {
+                                    showToast({ message: "To step is invalid.", tone: "warning" });
+                                    return;
+                                  }
+                                  const range =
+                                    fromStep || toStep ? { fromStep, toStep } : undefined;
+                                  void runPlan(execution.planPath, range, {
+                                    selectedSteps: steps,
+                                    resumeFrom: execution.runId
+                                  });
+                                }}
+                              >
+                                Run again (resume)
+                              </Button>
+                            </div>
+                          )}
+                        </>
+                      )}
                     <div className="actions">
                       {execution.runId ? (
                         <a className="btn btn--ghost btn--sm" href={`/runs/${execution.runId}/index.html`}>
                           Abrir run
                         </a>
                       ) : null}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setMinimizedExecutions((current) => ({
-                            ...current,
-                            [execution.executionId]: !isMinimized
-                          }))
-                        }
-                      >
-                        {isMinimized ? "Expandir execucao" : "Minimizar execucao"}
-                      </Button>
                       {!isMinimized && (
                         <Button
                           variant="ghost"
@@ -1432,15 +1778,26 @@ export default function App() {
                     </div>
                     {!isMinimized && execution.output && execution.output.length > 0 && (
                       <div className="output-groups">
-                        {renderExecutionOutput(
-                          execution.output,
-                          logFilters[execution.executionId]?.level ?? "all",
-                          isStepsMinimized,
-                          {
-                            collapsed: collapsedOutputGroups[execution.executionId],
-                            onToggle: (groupKey) => toggleOutputGroup(execution.executionId, groupKey)
-                          }
-                        )}
+                          {renderExecutionOutput(
+                            execution.output,
+                            logFilters[execution.executionId]?.level ?? "all",
+                            isStepsMinimized,
+                            {
+                              collapsed: collapsedOutputGroups[execution.executionId],
+                              onToggle: (groupKey) => toggleOutputGroup(execution.executionId, groupKey),
+                              onRetryStep: (stepNumber) => {
+                                if (!execution.runId || !execution.planPath) {
+                                  return;
+                                }
+                                void runPlan(
+                                  execution.planPath,
+                                  { fromStep: stepNumber },
+                                  { resumeFrom: execution.runId }
+                                );
+                              },
+                              canRetry: Boolean(execution.runId && execution.planPath && execution.status !== "running")
+                            }
+                          )}
                       </div>
                     )}
                   </article>
@@ -1462,13 +1819,13 @@ export default function App() {
               </Button>
             </div>
             {runsLoading ? (
-              <div className="empty">Loading runs...</div>
+              <div className="empty"><LoaderCircle className="empty__icon" size={16} />Loading runs...</div>
             ) : runs.length === 0 ? (
-              <div className="empty">No runs yet</div>
+              <div className="empty"><FolderOpen className="empty__icon" size={16} />No runs yet</div>
             ) : (
               <div className="stack">
-                {runs.map((run) => (
-                  <article className="card" key={run.runId}>
+                  {runs.map((run) => (
+                    <article className="card" key={run.runId}>
                     <div className="card-header">
                       <div>
                         <h3>{run.feature || run.runId}</h3>
@@ -1491,48 +1848,186 @@ export default function App() {
                         {run.cacheHits ? <span>Cache hits: {run.cacheHits}</span> : null}
                       </div>
                     )}
-                    {run.selectedSteps && run.selectedSteps.length > 0 && (
-                      <div className="meta">
-                        <span>Selected steps: {run.selectedSteps.join(", ")}</span>
-                      </div>
-                    )}
-                      <div className="actions">
-                        <a className="btn btn--ghost btn--sm" href={`/runs/${run.runId}/index.html`}>
-                          Open
-                        </a>
-                        {run.logsUrl && (
-                          <a className="btn btn--ghost btn--sm" href={run.logsUrl}>
-                            Logs
-                          </a>
-                        )}
-                        {run.planPath && (
+                      {run.selectedSteps && run.selectedSteps.length > 0 && (
+                        <div className="meta">
+                          <span>Selected steps: {run.selectedSteps.join(", ")}</span>
+                        </div>
+                      )}
+                      {run.resumeFrom && (
+                        <div className="meta">
+                          <span>Resume: {run.resumeFrom}</span>
+                        </div>
+                      )}
+                      {run.planPath && (
+                        <div className="range execution-resume">
+                          <label>
+                            Steps
+                            <input
+                              placeholder="1,3,4"
+                              className="execution-resume__steps"
+                              value={(runRerunDrafts[run.runId] ?? { steps: "" }).steps}
+                              onChange={(event) =>
+                                setRunRerunDrafts((current) => ({
+                                  ...current,
+                                  [run.runId]: {
+                                    ...(current[run.runId] ?? { steps: "", from: "", to: "" }),
+                                    steps: event.target.value
+                                  }
+                                }))
+                              }
+                            />
+                          </label>
+                          <label>
+                            From
+                            <input
+                              placeholder="1"
+                              value={(runRerunDrafts[run.runId] ?? { from: "" }).from}
+                              onChange={(event) =>
+                                setRunRerunDrafts((current) => ({
+                                  ...current,
+                                  [run.runId]: {
+                                    ...(current[run.runId] ?? { steps: "", from: "", to: "" }),
+                                    from: event.target.value
+                                  }
+                                }))
+                              }
+                            />
+                          </label>
+                          <label>
+                            To
+                            <input
+                              placeholder="4"
+                              value={(runRerunDrafts[run.runId] ?? { to: "" }).to}
+                              onChange={(event) =>
+                                setRunRerunDrafts((current) => ({
+                                  ...current,
+                                  [run.runId]: {
+                                    ...(current[run.runId] ?? { steps: "", from: "", to: "" }),
+                                    to: event.target.value
+                                  }
+                                }))
+                              }
+                            />
+                          </label>
                           <Button
                             variant="primary"
                             size="sm"
-                            onClick={() =>
-                              runPlan(
-                                run.planPath || "",
-                                {
-                                  fromStep: run.fromStep || undefined,
-                                  toStep: run.toStep || undefined
-                                },
-                                {
-                                  selectedSteps: run.selectedSteps || undefined
-                                }
-                              )
-                            }
+                            onClick={() => {
+                              const draft = runRerunDrafts[run.runId] ?? { steps: "", from: "", to: "" };
+                              const steps = parseStepsInput(draft.steps);
+                              if (draft.steps.trim().length > 0 && !steps) {
+                                showToast({ message: "Selected steps are invalid.", tone: "warning" });
+                                return;
+                              }
+                              const fromStep = parseRangeInput(draft.from);
+                              if (draft.from.trim().length > 0 && fromStep === undefined) {
+                                showToast({ message: "From step is invalid.", tone: "warning" });
+                                return;
+                              }
+                              const toStep = parseRangeInput(draft.to);
+                              if (draft.to.trim().length > 0 && toStep === undefined) {
+                                showToast({ message: "To step is invalid.", tone: "warning" });
+                                return;
+                              }
+                              const range =
+                                fromStep || toStep ? { fromStep, toStep } : undefined;
+                              void runPlan(run.planPath || "", range, {
+                                selectedSteps: steps,
+                                resumeFrom: run.runId
+                              });
+                            }}
                           >
-                            Run again
+                            Run again (resume)
                           </Button>
-                        )}
-                        <Button variant="danger" size="sm" onClick={() => deleteRun(run.runId)}>
-                          Delete
-                        </Button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
+                        </div>
+                      )}
+                        <div className="actions">
+                          <a className="btn btn--ghost btn--sm" href={`/runs/${run.runId}/index.html`}>
+                            Open
+                          </a>
+                          {run.logsUrl && (
+                            <a className="btn btn--ghost btn--sm" href={run.logsUrl}>
+                              Logs
+                            </a>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const next = !(runStepsExpanded[run.runId] ?? false);
+                              setRunStepsExpanded((current) => ({ ...current, [run.runId]: next }));
+                              if (next && !reportDetailsByRun[run.runId]) {
+                                void loadRunDetails(run.runId);
+                              }
+                            }}
+                          >
+                            {runStepsExpanded[run.runId] ? "Hide steps" : "Show steps"}
+                          </Button>
+                          {run.planPath && (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() =>
+                                runPlan(
+                                  run.planPath || "",
+                                  {
+                                    fromStep: run.fromStep || undefined,
+                                    toStep: run.toStep || undefined
+                                  },
+                                  {
+                                    selectedSteps: run.selectedSteps || undefined
+                                  }
+                                )
+                              }
+                            >
+                              Run again
+                            </Button>
+                          )}
+                          <Button variant="danger" size="sm" onClick={() => deleteRun(run.runId)}>
+                            Delete
+                          </Button>
+                        </div>
+                      {runStepsExpanded[run.runId] && (
+                        <div className="details">
+                          {reportDetailsByRun[run.runId]?.summary?.steps ? (
+                            <div className="stack">
+                              {(reportDetailsByRun[run.runId].summary.steps as Array<{ id?: string; type?: string; status?: string }>)
+                                .map((step, index) => ({ step, index }))
+                                .filter((item) => item.step.status === "FAIL")
+                                .map((item) => (
+                                  <div className="card" key={`${run.runId}-step-${item.index}`}>
+                                    <div className="card-header">
+                                      <div>
+                                        <h4>{item.step.id || `step-${item.index + 1}`}</h4>
+                                        <p className="muted">{item.step.type || "step"} · {item.step.status || "UNKNOWN"}</p>
+                                      </div>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() =>
+                                          run.planPath &&
+                                          runPlan(
+                                            run.planPath,
+                                            { fromStep: item.index + 1 },
+                                            { resumeFrom: run.runId }
+                                          )
+                                        }
+                                      >
+                                        Try again from here
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                            </div>
+                          ) : (
+                            <div className="empty"><LoaderCircle className="empty__icon" size={16} />Loading steps...</div>
+                          )}
+                        </div>
+                      )}
+                      </article>
+                    ))}
+                  </div>
+                )}
             <div className="pagination">
               <Button
                 variant="ghost"
@@ -1556,194 +2051,43 @@ export default function App() {
         )}
 
         {tab === "reports" && (
-          <section className="section">
-            <div className="section-title">
-              <div>
-                <h2>Reports</h2>
-                <p>Monte um documento com evidencias selecionadas.</p>
-              </div>
-              <Button variant="primary" onClick={() => loadReportRuns()} disabled={reportRunsLoading}>
-                {reportRunsLoading ? "Loading..." : "Refresh runs"}
-              </Button>
-            </div>
-            <div className="report-builder">
-              <div className="card report-panel">
-                <div className="report-controls">
-                  <label>
-                    Report name
-                    <input
-                      value={reportName}
-                      onChange={(event) => setReportName(event.target.value)}
-                      placeholder="relatorio"
-                    />
-                  </label>
-                  <div className="report-inline-actions">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => reportRunId && loadRunDetails(reportRunId)}
-                      disabled={!reportRunId}
-                    >
-                      Reload run
-                    </Button>
-                    <Button variant="primary" onClick={generateReport} disabled={!reportRunId}>
-                      Generate docx
-                    </Button>
-                  </div>
-                </div>
-                <div className="report-actions">
-                  <Button variant="ghost" size="sm" onClick={() => addReportBlock("h1")}>Add H1</Button>
-                  <Button variant="ghost" size="sm" onClick={() => addReportBlock("h2")}>Add H2</Button>
-                  <Button variant="ghost" size="sm" onClick={() => addReportBlock("p")}>Add P</Button>
-                  <Button variant="ghost" size="sm" onClick={() => addReportBlock("small")}>Add Small</Button>
-                  <Button variant="ghost" size="sm" onClick={() => addReportBlock("evidence")}>Add evidence</Button>
-                </div>
-                {reportLinks && (
-                  <div className="report-links">
-                    {reportLinks.docxUrl && (
-                      <a className="btn btn--ghost btn--sm" href={reportLinks.docxUrl}>Download docx</a>
-                    )}
-                    {reportLinks.htmlUrl && (
-                      <a className="btn btn--ghost btn--sm" href={reportLinks.htmlUrl} target="_blank" rel="noreferrer">
-                        Open HTML
-                      </a>
-                    )}
-                    {reportLinks.jsonUrl && (
-                      <a className="btn btn--ghost btn--sm" href={reportLinks.jsonUrl} target="_blank" rel="noreferrer">
-                        Open JSON
-                      </a>
-                    )}
-                  </div>
-                )}
-                {reportBlocks.length === 0 ? (
-                  <div className="empty">Add blocks to start assembling the report.</div>
-                ) : (
-                  <div className="report-blocks">
-                    {reportBlocks.map((block, index) => {
-                      return (
-                        <div className={`report-block ${block.enabled === false ? "disabled" : ""}`} key={block.id}>
-                          <div className="report-block-header">
-                            <div className="report-block-title">
-                              <span className="pill secondary">{block.type}</span>
-                              <span className="muted">#{index + 1}</span>
-                            </div>
-                            <div className="report-block-actions">
-                              <Button variant="ghost" size="sm" onClick={() => moveReportBlock(block.id, -1)}>Up</Button>
-                              <Button variant="ghost" size="sm" onClick={() => moveReportBlock(block.id, 1)}>Down</Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => updateReportBlock(block.id, { enabled: block.enabled === false })}
-                              >
-                                {block.enabled === false ? "Include" : "Skip"}
-                              </Button>
-                              <Button variant="danger" size="sm" onClick={() => removeReportBlock(block.id)}>Remove</Button>
-                            </div>
-                          </div>
-                          <div className="report-block-body">
-                            {(block.type === "h1" || block.type === "h2" || block.type === "p" || block.type === "small") && (
-                              <textarea
-                                rows={block.type === "p" ? 4 : 2}
-                                placeholder="Write text..."
-                                value={block.text ?? ""}
-                                onChange={(event) => updateReportBlock(block.id, { text: event.target.value })}
-                              />
-                            )}
-                            {block.type === "evidence" && (
-                              <div className="report-evidence-form">
-                                <label>
-                                  Label
-                                  <input
-                                    value={block.label ?? ""}
-                                    onChange={(event) => updateReportBlock(block.id, { label: event.target.value })}
-                                  />
-                                </label>
-                                <label>
-                                  Caption
-                                  <input
-                                    value={block.caption ?? ""}
-                                    onChange={(event) => updateReportBlock(block.id, { caption: event.target.value })}
-                                  />
-                                </label>
-                                <div className="report-evidence-row">
-                                  <div className="report-evidence-summary">
-                                    <span className="muted">
-                                      {block.stepId && block.filename
-                                        ? `${block.runId || reportRunId} / ${block.stepId} → ${block.filename}`
-                                        : "No evidence selected"}
-                                    </span>
-                                  </div>
-                                  <Button variant="ghost" size="sm" onClick={() => openEvidencePicker(block.id)}>
-                                    Choose evidence
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="card report-preview">
-                <div className="report-preview-header">
-                  <h3>Preview</h3>
-                  <span className="muted">
-                    {reportRunId ? `Run ${reportRunId}` : "Select a run to load evidences"}
-                  </span>
-                </div>
-            <div className="report-preview-body">
-              {reportBlocks
-                .filter((block) => block.enabled !== false)
-                .map((block) => {
-                  if (block.type === "h1") {
-                    return <h1 key={block.id}>{block.text || "Untitled h1"}</h1>;
-                  }
-                  if (block.type === "h2") {
-                    return <h2 key={block.id}>{block.text || "Untitled h2"}</h2>;
-                  }
-                  if (block.type === "p") {
-                    return <p key={block.id}>{block.text || "..."}</p>;
-                  }
-                  if (block.type === "small") {
-                    return <small key={block.id}>{block.text || "..."}</small>;
-                  }
-                      if (block.type === "evidence") {
-                        const artifact = getRunArtifact(
-                          reportDetailsByRun,
-                          block.runId || reportRunId,
-                          block.stepId,
-                          block.filename
-                        );
-                        return (
-                          <div className="report-evidence" key={block.id}>
-                            <strong>{block.label || "Evidence"}</strong>
-                            {artifact ? (
-                              <>
-                                {artifact.kind === "image" && (
-                                  <img src={artifact.url} alt={artifact.filename} />
-                                )}
-                                {artifact.kind === "html" && (
-                                  <iframe title={artifact.filename} src={artifact.url} />
-                                )}
-                                {artifact.kind === "file" && (
-                                  <span className="muted">{artifact.filename}</span>
-                                )}
-                              </>
-                            ) : (
-                              <p className="muted">No evidence selected.</p>
-                            )}
-                            {block.caption && <p className="muted">{block.caption}</p>}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
-                </div>
-              </div>
-            </div>
-          </section>
+          <ReportsPanel
+            reportRuns={reportRuns}
+            reportRunsLoading={reportRunsLoading}
+            reportRunId={reportRunId}
+            reportDetailsByRun={reportDetailsByRun}
+            reportName={reportName}
+            reportBlocks={reportBlocks}
+            reportLinks={reportLinks}
+            reportLibrary={reportLibrary}
+            activeReportId={activeReportId}
+            canGenerateReport={canGenerateReport}
+            evidencePicker={evidencePicker}
+            evidenceSearch={evidenceSearch}
+            onRefreshRuns={loadReportRuns}
+            onReportNameChange={setReportName}
+            onReloadRun={() => reportRunId && loadRunDetails(reportRunId)}
+    onGenerateReport={(blocks) => generateReport(undefined, blocks)}
+            onAddReportBlock={addReportBlock}
+            onUpdateReportBlock={updateReportBlock}
+            onMoveReportBlock={moveReportBlock}
+            onRemoveReportBlock={removeReportBlock}
+            onSaveReport={() => saveReportDraft()}
+            onSaveReportAsNew={() => saveReportDraft({ asNew: true })}
+            onStartNewReport={startNewReportDraft}
+            onLoadReport={loadReportDraft}
+            onDeleteReport={deleteReportDraft}
+            onGenerateReportFromLibrary={(id) => {
+              const draft = reportLibrary.find((item) => item.id === id);
+              if (draft) {
+                void generateReport(draft);
+              }
+            }}
+            onOpenEvidencePicker={openEvidencePicker}
+            onCloseEvidencePicker={closeEvidencePicker}
+            onEvidenceSearchChange={setEvidenceSearch}
+            onEvidenceSelectionChange={handleEvidenceSelectionChange}
+          />
         )}
 
         {tab === "triggers" && (
@@ -1785,9 +2129,9 @@ export default function App() {
               <Button variant="primary" type="submit">Create</Button>
             </form>
             {triggersLoading ? (
-              <div className="empty">Loading triggers...</div>
+              <div className="empty"><LoaderCircle className="empty__icon" size={16} />Loading triggers...</div>
             ) : triggers.length === 0 ? (
-              <div className="empty">No triggers configured</div>
+              <div className="empty"><Timer className="empty__icon" size={16} />No triggers configured</div>
             ) : (
               <div className="stack" data-testid="triggers-list">
                 {triggers.map((trigger) => (
@@ -1848,98 +2192,6 @@ export default function App() {
         </div>
       )}
 
-      {evidencePicker.open && (
-        <div className="modal-backdrop" onClick={closeEvidencePicker}>
-          <div className="modal report-evidence-modal" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Choose evidence</h3>
-              <Button variant="ghost" size="sm" onClick={closeEvidencePicker}>Close</Button>
-            </div>
-            <div className="report-evidence-modal-body">
-              <div className="report-evidence-selectors">
-                <label>
-                  Evidence
-                  <input
-                    className="report-evidence-search"
-                    placeholder="Search by run, step, filename..."
-                    value={evidenceSearch}
-                    onChange={(event) => setEvidenceSearch(event.target.value)}
-                  />
-                  <select
-                    data-testid="report-modal-evidence"
-                    value={
-                      evidencePicker.runId && evidencePicker.stepId && evidencePicker.filename
-                        ? `${evidencePicker.runId}::${evidencePicker.stepId}::${evidencePicker.filename}`
-                        : ""
-                    }
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      if (!value) {
-                        setEvidencePicker((current) => ({
-                          ...current,
-                          runId: "",
-                          stepId: "",
-                          filename: ""
-                        }));
-                        return;
-                      }
-                      const [runId, stepId, filename] = value.split("::");
-                      setEvidencePicker((current) => ({
-                        ...current,
-                        runId,
-                        stepId,
-                        filename
-                      }));
-                    }}
-                  >
-                    <option value="">Select evidence</option>
-                    {getEvidenceOptions(reportRuns, reportDetailsByRun, evidenceSearch).map((item) => (
-                      <option key={item.key} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="report-evidence-preview">
-                {(() => {
-                  const artifact = getRunArtifact(
-                    reportDetailsByRun,
-                    evidencePicker.runId,
-                    evidencePicker.stepId,
-                    evidencePicker.filename
-                  );
-                  if (!artifact) {
-                    return <p className="muted">Select a step and evidence to preview.</p>;
-                  }
-                  if (artifact.kind === "image") {
-                    return <img src={artifact.url} alt={artifact.filename} />;
-                  }
-                  if (artifact.kind === "html") {
-                    return <iframe title={artifact.filename} src={artifact.url} />;
-                  }
-                  return (
-                    <a className="btn btn--ghost btn--sm" href={artifact.url} target="_blank" rel="noreferrer">
-                      Open {artifact.filename}
-                    </a>
-                  );
-                })()}
-              </div>
-            </div>
-            <div className="report-evidence-modal-actions">
-              <Button variant="ghost" size="sm" onClick={closeEvidencePicker}>Cancel</Button>
-              <Button
-                variant="primary"
-                data-testid="report-modal-confirm"
-                onClick={confirmEvidencePicker}
-                disabled={!evidencePicker.filename}
-              >
-                Confirm evidence
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </AppShell>
   );
 }
@@ -1987,6 +2239,24 @@ function truncateText(value: string, max: number) {
     return value;
   }
   return value.slice(0, Math.max(1, max - 3)) + "...";
+}
+
+function parseRangeInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseStepsInput(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = trimmed
+    .split(",")
+    .map((item) => Number.parseInt(item.trim(), 10))
+    .filter((item) => Number.isFinite(item));
+  const unique = Array.from(new Set(parsed)).sort((a, b) => a - b);
+  return unique.length > 0 ? unique : undefined;
 }
 
 function getPlanFromHash() {
@@ -2094,64 +2364,6 @@ function validateInputRows(rows: Array<{ key: string; value: string }>, label: s
   return errors;
 }
 
-function getRunDetails(detailsMap: Record<string, RunDetails>, runId?: string) {
-  if (!runId) {
-    return null;
-  }
-  return detailsMap[runId] ?? null;
-}
-
-function getRunStep(details: RunDetails | null, stepId?: string) {
-  if (!details || !stepId) {
-    return null;
-  }
-  return details.steps.find((step) => step.id === stepId) ?? null;
-}
-
-function getRunArtifact(
-  detailsMap: Record<string, RunDetails>,
-  runId?: string,
-  stepId?: string,
-  filename?: string
-) {
-  const details = getRunDetails(detailsMap, runId);
-  if (!details || !stepId || !filename) {
-    return null;
-  }
-  const step = getRunStep(details, stepId);
-  if (!step) {
-    return null;
-  }
-  return step.artifacts.find((artifact) => artifact.filename === filename) ?? null;
-}
-
-function getEvidenceOptions(
-  runs: RunSummary[],
-  detailsMap: Record<string, RunDetails>,
-  search: string
-) {
-  const normalized = search.trim().toLowerCase();
-  const sortedRuns = [...runs].sort((a, b) => b.runId.localeCompare(a.runId));
-  const options: Array<{ key: string; value: string; label: string }> = [];
-  for (const run of sortedRuns) {
-    const details = getRunDetails(detailsMap, run.runId);
-    const steps = details?.steps ?? [];
-    for (const step of steps) {
-      for (const artifact of step.artifacts) {
-        const label = `${run.runId} / ${step.id} / ${artifact.label}:${artifact.filename}`;
-        if (normalized && !label.toLowerCase().includes(normalized)) {
-          continue;
-        }
-        options.push({
-          key: `${run.runId}-${step.id}-${artifact.filename}`,
-          value: `${run.runId}::${step.id}::${artifact.filename}`,
-          label
-        });
-      }
-    }
-  }
-  return options;
-}
 
 function getStepTypeCounts(steps: PlanStep[]) {
   const counts = new Map<string, number>();
@@ -2177,7 +2389,12 @@ function renderExecutionOutput(
   output: string[],
   level: "all" | "error",
   compact = false,
-  options?: { collapsed?: Record<string, boolean>; onToggle?: (groupKey: string) => void }
+  options?: {
+    collapsed?: Record<string, boolean>;
+    onToggle?: (groupKey: string) => void;
+    onRetryStep?: (stepNumber: number) => void;
+    canRetry?: boolean;
+  }
 ) {
   const lines = output.join("").split(/\r?\n/);
   const filteredLines = filterExecutionLines(lines, "", level);
@@ -2204,6 +2421,16 @@ function renderExecutionOutput(
           ) : null}
           {group.errorCount ? <span className="error-pill">errors {group.errorCount}</span> : null}
           {formatGroupStatus(group)}
+          {group.stepNumber && options?.onRetryStep ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => options.onRetryStep?.(group.stepNumber as number)}
+              disabled={options.canRetry === false}
+            >
+              Try again from here
+            </Button>
+          ) : null}
           {!compact && options?.onToggle && (
             <Button
               variant="ghost"
@@ -2251,6 +2478,7 @@ function groupOutputByStep(lines: string[]) {
     cacheInputs?: string;
     attempts?: number;
     errorCount?: number;
+    stepNumber?: number;
   }> = [];
   let current = createGroup("General logs");
   for (const line of lines) {
@@ -2258,7 +2486,7 @@ function groupOutputByStep(lines: string[]) {
     const match = line.match(/Step\s+(\d{2})\/(\d+)\s+(.+)/);
     if (match) {
       if (current.lines.length > 0) groups.push(current);
-      current = createGroup(`Step ${match[1]}: ${match[3]}`);
+      current = createGroup(`Step ${match[1]}: ${match[3]}`, match[1]);
     }
     current.lines.push(line);
     updateGroupStatus(current, line);
@@ -2267,7 +2495,8 @@ function groupOutputByStep(lines: string[]) {
   return groups;
 }
 
-function createGroup(title: string) {
+function createGroup(title: string, stepNumber?: string) {
+  const parsedStep = stepNumber ? Number.parseInt(stepNumber, 10) : undefined;
   return {
     title,
     lines: [] as string[],
@@ -2277,7 +2506,8 @@ function createGroup(title: string) {
     cacheKey: undefined,
     cacheInputs: undefined,
     attempts: undefined,
-    errorCount: 0
+    errorCount: 0,
+    stepNumber: Number.isFinite(parsedStep) ? parsedStep : undefined
   };
 }
 

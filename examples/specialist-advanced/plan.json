@@ -12,7 +12,7 @@
         "specialist": {
           "task": "writeFile",
           "outputPath": "note.txt",
-          "content": "Inicio do run {runId}\n"
+          "content": "Inicio do run {{runId}}\n"
         }
       }
     },

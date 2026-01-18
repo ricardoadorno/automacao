@@ -1,7 +1,7 @@
 export type Context = Record<string, string>;
 
 export function resolveTemplate(input: string, context: Context): string {
-  return input.replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key) => {
+  return input.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
     if (context[key] === undefined) {
       throw new Error(`Missing context value for ${key}`);
     }

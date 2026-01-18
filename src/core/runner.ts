@@ -21,6 +21,7 @@ export interface ExecutionOptions {
   toStep?: number;
   planPath?: string;
   selectedSteps?: number[];
+  resumeFrom?: string;
 }
 
 export async function executePlan(
@@ -47,10 +48,17 @@ export async function executePlan(
     options.selectedSteps && options.selectedSteps.length > 0
       ? new Set(options.selectedSteps)
       : null;
-  const context: Context = buildContext(plan, {
-    runId,
-    startedAt: runStartedAt
-  });
+  const resumeContext = options.resumeFrom
+    ? await loadResumeContext(options.resumeFrom, outDir)
+    : null;
+  const context: Context = buildContext(
+    plan,
+    {
+      runId,
+      startedAt: runStartedAt
+    },
+    resumeContext ?? undefined
+  );
   const browserStepsCount = plan.steps.filter((step) => step.type === "browser").length;
   const reuseSession = plan.browser?.reuseSession ?? browserStepsCount > 1;
   const sharedSession: BrowserSession | null = reuseSession
@@ -137,6 +145,7 @@ export async function executePlan(
       fromStep: options.fromStep ?? null,
       toStep: options.toStep ?? null,
       selectedSteps: options.selectedSteps ?? null,
+      resumeFrom: options.resumeFrom ?? null,
       feature: plan.metadata.feature,
       ticket: plan.metadata.ticket ?? null,
       env: plan.metadata.env ?? null,
@@ -401,6 +410,8 @@ async function runSingleStep(input: RunSingleStepInput): Promise<StepResult | nu
     logStepFailure(stepNumber, totalSteps, step, notes, durationMs, loopLabel);
     await writeErrorFile(errorPath, error);
     await writeErrorPng(errorPngPath);
+    outputs.error = path.basename(errorPath);
+    outputs.errorScreenshot = path.basename(errorPngPath);
     if ((plan.failPolicy ?? "stop") === "stop") {
       logStopOnFailure();
       await finalizeStep(stepDir, step, resolvedStep, status, stepStartedAt, outputs, durationMs, notes);
@@ -474,10 +485,15 @@ function buildStepResultId(step: PlanStep, loopInfo: { index: number } | null): 
   return `${baseId}__${String(loopInfo.index + 1).padStart(2, "0")}`;
 }
 
-function buildContext(plan: Plan, runtime: { runId: string; startedAt: string }): Context {
+function buildContext(
+  plan: Plan,
+  runtime: { runId: string; startedAt: string },
+  resumeContext?: Context
+): Context {
+  const base = normalizeContext(resumeContext);
   const defaults = normalizeContext(plan.inputs?.defaults);
-  const planContext = normalizeContext(plan.context);
   const overrides = normalizeContext(plan.inputs?.overrides);
+  const planContext = normalizeContext(plan.context);
   const envContext = loadEnvContext(plan.inputs?.envPrefix);
   const core = {
     feature: plan.metadata.feature,
@@ -488,9 +504,10 @@ function buildContext(plan: Plan, runtime: { runId: string; startedAt: string })
   };
 
   return {
+    ...base,
     ...defaults,
-    ...planContext,
     ...overrides,
+    ...planContext,
     ...envContext,
     ...core
   };
@@ -1092,6 +1109,51 @@ function buildIndexHtml(summary: { runId: string; steps: StepResult[] }): string
 </html>`;
 }
 
+async function loadResumeContext(resumeFrom: string, outDir: string): Promise<Context | null> {
+  const summaryPath = await resolveResumeSummaryPath(resumeFrom, outDir);
+  if (!summaryPath) {
+    throw new Error(`Resume summary not found: ${resumeFrom}`);
+  }
+  const raw = await fs.readFile(summaryPath, "utf-8");
+  const parsed = JSON.parse(raw) as { context?: Context };
+  return normalizeContext(parsed.context);
+}
+
+async function resolveResumeSummaryPath(resumeFrom: string, outDir: string): Promise<string | null> {
+  const candidates = resumeFrom.endsWith(".json")
+    ? [resumeFrom, path.resolve(resumeFrom)]
+    : [
+        path.join(outDir, resumeFrom, "00_runSummary.json"),
+        path.join(resumeFrom, "00_runSummary.json"),
+        path.join(path.resolve(resumeFrom), "00_runSummary.json"),
+        resumeFrom,
+        path.resolve(resumeFrom)
+      ];
+
+  for (const candidate of candidates) {
+    try {
+      const stat = await fs.stat(candidate);
+      if (stat.isFile()) {
+        return candidate;
+      }
+      if (stat.isDirectory()) {
+        const summaryPath = path.join(candidate, "00_runSummary.json");
+        try {
+          const summaryStat = await fs.stat(summaryPath);
+          if (summaryStat.isFile()) {
+            return summaryPath;
+          }
+        } catch {
+          continue;
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 function ensureRequires(step: PlanStep, context: Context): void {
   if (!step.requires) {
     return;
@@ -1280,6 +1342,8 @@ function renderArtifacts(outputs: Record<string, unknown>): string {
   addArtifactItem(items, stepDir, outputs.file, "Arquivo", "file");
   addArtifactItem(items, stepDir, outputs.stdout, "Saida", "file");
   addArtifactItem(items, stepDir, outputs.stderr, "Erro", "file");
+  addArtifactItem(items, stepDir, outputs.error, "Erro", "file");
+  addArtifactItem(items, stepDir, outputs.errorScreenshot, "Erro (captura)", "image");
 
   if (items.length === 0) {
     return '<span class="muted">-</span>';

@@ -50,6 +50,8 @@ describe("P0.2 failure handling", () => {
     const stepDir = path.join(stepsDir, steps[0]);
     const metadata = JSON.parse(await fs.readFile(path.join(stepDir, "metadata.json"), "utf-8"));
     expect(metadata.status).toBe("FAIL");
+    expect(metadata.outputs.error).toBe("error.json");
+    expect(metadata.outputs.errorScreenshot).toBe("error.png");
     await fs.access(path.join(stepDir, "error.json"));
     await fs.access(path.join(stepDir, "error.png"));
   });

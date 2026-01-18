@@ -19,7 +19,7 @@ Write file:
     "specialist": {
       "task": "writeFile",
       "outputPath": "note.txt",
-      "content": "run {runId}"
+      "content": "run {{runId}}"
     }
   }
 }

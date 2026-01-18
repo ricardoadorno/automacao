@@ -63,6 +63,7 @@ export type Execution = {
   fromStep?: number;
   toStep?: number;
   selectedSteps?: number[] | null;
+  resumeFrom?: string | null;
 };
 
 export type RunSummary = {
@@ -71,6 +72,7 @@ export type RunSummary = {
   fromStep?: number | null;
   toStep?: number | null;
   selectedSteps?: number[] | null;
+  resumeFrom?: string | null;
   feature?: string;
   ticket?: string;
   env?: string;
@@ -106,7 +108,7 @@ export type RunDetails = {
 
 export type ReportBlock = {
   id: string;
-  type: "h1" | "h2" | "p" | "small" | "evidence";
+  type: "h1" | "h2" | "h3" | "h4" | "p" | "small" | "evidence";
   text?: string;
   label?: string;
   caption?: string;
@@ -121,6 +123,16 @@ export type ReportDocument = {
   name: string;
   runId: string;
   blocks: ReportBlock[];
+};
+
+export type SavedReport = {
+  id: string;
+  name: string;
+  runId: string;
+  blocks: ReportBlock[];
+  createdAt: string;
+  updatedAt: string;
+  exports?: { jsonUrl?: string; htmlUrl?: string; docxUrl?: string; generatedAt?: string };
 };
 
 export type Trigger = {
