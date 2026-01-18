@@ -15,6 +15,7 @@ export function Button({
   size = "md",
   icon,
   className,
+  type = "button",
   children,
   ...props
 }: ButtonProps) {
@@ -28,7 +29,7 @@ export function Button({
     .join(" ");
 
   return (
-    <button className={className ? `${classes} ${className}` : classes} {...props}>
+    <button className={className ? `${classes} ${className}` : classes} type={type} {...props}>
       {icon ? <span className="btn__icon">{icon}</span> : null}
       <span className="btn__label">{children}</span>
     </button>

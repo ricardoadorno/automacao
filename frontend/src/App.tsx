@@ -42,7 +42,14 @@ const tabPaths: Record<TabKey, string> = {
 
 function tabFromPath(pathname: string): TabKey {
   const entries = Object.entries(tabPaths) as Array<[TabKey, string]>;
-  const match = entries.find(([, path]) => pathname.startsWith(path));
+  const aliases: Partial<Record<TabKey, string[]>> = {
+    executions: ["/execucoes"]
+  };
+  const match = entries.find(([key, path]) => {
+    if (pathname.startsWith(path)) return true;
+    const extra = aliases[key];
+    return extra ? extra.some((alias) => pathname.startsWith(alias)) : false;
+  });
   return match ? match[0] : "plans";
 }
 
@@ -69,6 +76,8 @@ export default function App() {
   const [planFilter, setPlanFilter] = useState("");
   const [exampleFilter, setExampleFilter] = useState("");
   const [stepSelections, setStepSelections] = useState<Record<string, Record<number, boolean>>>({});
+  const [collapsedPlanCards, setCollapsedPlanCards] = useState<Record<string, boolean>>({});
+  const [collapsedOutputGroups, setCollapsedOutputGroups] = useState<Record<string, Record<string, boolean>>>({});
   const [rangeDrafts, setRangeDrafts] = useState<Record<string, { from?: string; to?: string }>>({});
   const [inputsDrafts, setInputsDrafts] = useState<Record<string, InputsDraft>>({});
   const [selectedPlanPath, setSelectedPlanPath] = useState<string | null>(null);
@@ -328,9 +337,9 @@ export default function App() {
       };
       setExecutions((current) => ({ ...current, [execution.executionId]: execution }));
       showToast({ message: "Execution started", tone: "success" });
-      if (options.switchTab !== false) {
-        goToTab("executions");
-      }
+      clearSelectedPlan();
+      setSidebarOpen(false);
+      goToTab("executions");
       startPolling(execution.executionId);
       startStream(execution.executionId);
     } catch (error) {
@@ -720,6 +729,26 @@ export default function App() {
     }));
   }
 
+  function togglePlanCollapse(planPath: string) {
+    setCollapsedPlanCards((current) => ({
+      ...current,
+      [planPath]: !current[planPath]
+    }));
+  }
+
+  function toggleOutputGroup(executionId: string, groupKey: string) {
+    setCollapsedOutputGroups((current) => {
+      const existing = current[executionId] || {};
+      return {
+        ...current,
+        [executionId]: {
+          ...existing,
+          [groupKey]: !existing[groupKey]
+        }
+      };
+    });
+  }
+
   function toggleAllSteps(planPath: string, steps: PlanStep[]) {
     setStepSelections((current) => {
       const existing = current[planPath] || {};
@@ -825,12 +854,14 @@ export default function App() {
   const totalPages = Math.max(1, Math.ceil(runsTotal / runsPageSize));
   const filteredPlans = filterPlans(plans, planFilter);
   const filteredExamples = filterPlans(examples, exampleFilter);
-  const executionList = Object.values(executions).sort((a, b) => {
-    const aRunning = a.status === "running";
-    const bRunning = b.status === "running";
-    if (aRunning !== bRunning) return aRunning ? -1 : 1;
-    return (b.startedAt || "").localeCompare(a.startedAt || "");
-  });
+  const executionList = useMemo(() => {
+    return Object.values(executions).sort((a, b) => {
+      const aRunning = a.status === "running";
+      const bRunning = b.status === "running";
+      if (aRunning !== bRunning) return aRunning ? -1 : 1;
+      return (b.startedAt || "").localeCompare(a.startedAt || "");
+    });
+  }, [executions]);
   const focusExecutionId = executionList.find((execution) => execution.status === "running")?.executionId;
 
   useEffect(() => {
@@ -838,6 +869,7 @@ export default function App() {
       return;
     }
     setMinimizedExecutions((current) => {
+      let changed = false;
       const next = { ...current };
       for (const execution of executionList) {
         if (next[execution.executionId] !== undefined) {
@@ -846,8 +878,9 @@ export default function App() {
         next[execution.executionId] = focusExecutionId
           ? execution.executionId !== focusExecutionId
           : false;
+        changed = true;
       }
-      return next;
+      return changed ? next : current;
     });
   }, [executionList, focusExecutionId]);
   const navItems: Array<{ key: TabKey; label: string }> = [
@@ -939,6 +972,7 @@ export default function App() {
                     const rangeDraft = rangeDrafts[plan.path] || { from: "", to: "" };
                     const validationErrors = plan.validationErrors ?? [];
                     const hasValidationErrors = validationErrors.length > 0;
+                    const isCollapsed = collapsedPlanCards[plan.path] ?? false;
                     return (
                       <article
                         className={`card plan-card ${selectedSteps.length > 0 ? "selected" : ""}`}
@@ -979,7 +1013,7 @@ export default function App() {
                             <span>Types: {typeCounts.map((item) => `${item.type} ${item.count}`).join(", ")}</span>
                           )}
                         </div>
-                        {plan.config && (
+                        {!isCollapsed && plan.config && (
                           <div className="config-grid">
                             <div>
                               <span className="label">Execution</span>
@@ -1011,6 +1045,7 @@ export default function App() {
                             </div>
                           </div>
                         )}
+                        {!isCollapsed && (
                         <div className="range">
                           <label>
                             From
@@ -1050,9 +1085,17 @@ export default function App() {
                             Run range
                           </Button>
                         </div>
+                        )}
                         <div className="actions">
                           <Button variant="ghost" size="sm" onClick={() => selectPlan(plan.path)}>
                             View plan
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => togglePlanCollapse(plan.path)}
+                          >
+                            {isCollapsed ? "Expand details" : "Collapse details"}
                           </Button>
                           <Button
                             variant="primary"
@@ -1069,7 +1112,8 @@ export default function App() {
                               }
                               void runPlan(plan.path, undefined, {
                                 selectedSteps,
-                                inputs: payload.inputs
+                                inputs: payload.inputs,
+                                switchTab: true
                               });
                             }}
                             disabled={hasValidationErrors}
@@ -1152,6 +1196,7 @@ export default function App() {
                   const rangeDraft = rangeDrafts[plan.path] || { from: "", to: "" };
                   const validationErrors = plan.validationErrors ?? [];
                   const hasValidationErrors = validationErrors.length > 0;
+                  const isCollapsed = collapsedPlanCards[plan.path] ?? false;
                   return (
                     <article className="card plan-card" data-testid="plan-card" key={plan.path}>
                       <div className="plan-top">
@@ -1172,6 +1217,7 @@ export default function App() {
                           <span>Types: {typeCounts.map((item) => `${item.type} ${item.count}`).join(", ")}</span>
                         )}
                       </div>
+                      {!isCollapsed && (
                       <div className="range">
                         <label>
                           From
@@ -1211,9 +1257,17 @@ export default function App() {
                           Run range
                         </Button>
                       </div>
+                      )}
                       <div className="actions">
                         <Button variant="ghost" size="sm" onClick={() => selectPlan(plan.path)}>
                           View plan
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => togglePlanCollapse(plan.path)}
+                        >
+                          {isCollapsed ? "Expand details" : "Collapse details"}
                         </Button>
                         <Button
                           variant="primary"
@@ -1381,7 +1435,11 @@ export default function App() {
                         {renderExecutionOutput(
                           execution.output,
                           logFilters[execution.executionId]?.level ?? "all",
-                          isStepsMinimized
+                          isStepsMinimized,
+                          {
+                            collapsed: collapsedOutputGroups[execution.executionId],
+                            onToggle: (groupKey) => toggleOutputGroup(execution.executionId, groupKey)
+                          }
                         )}
                       </div>
                     )}
@@ -2115,13 +2173,19 @@ function getPlanFlags(plan: Plan) {
   return flags;
 }
 
-function renderExecutionOutput(output: string[], level: "all" | "error", compact = false) {
+function renderExecutionOutput(
+  output: string[],
+  level: "all" | "error",
+  compact = false,
+  options?: { collapsed?: Record<string, boolean>; onToggle?: (groupKey: string) => void }
+) {
   const lines = output.join("").split(/\r?\n/);
   const filteredLines = filterExecutionLines(lines, "", level);
   const groups = groupOutputByStep(filteredLines);
   if (groups.length === 0) {
     return <div className="output">No output yet</div>;
   }
+  const collapsed = options?.collapsed ?? {};
   return groups.map((group) => (
     <div className="output-group" key={group.title}>
       <div className={`output-header ${group.statusClass}`}>
@@ -2140,9 +2204,18 @@ function renderExecutionOutput(output: string[], level: "all" | "error", compact
           ) : null}
           {group.errorCount ? <span className="error-pill">errors {group.errorCount}</span> : null}
           {formatGroupStatus(group)}
+          {!compact && options?.onToggle && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => options.onToggle?.(group.title)}
+            >
+              {collapsed[group.title] ? "Expand step" : "Collapse step"}
+            </Button>
+          )}
         </span>
       </div>
-      {!compact && <pre className="output">{group.lines.join("\n")}</pre>}
+      {!compact && !collapsed[group.title] && <pre className="output">{group.lines.join("\n")}</pre>}
     </div>
   ));
 }

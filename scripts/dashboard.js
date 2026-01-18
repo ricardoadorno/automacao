@@ -1613,6 +1613,12 @@ function serveStatic(req, res) {
   });
 
   if (!filePath) {
+    const accepts = req.headers.accept || "";
+    const dashboardIndex = path.join(dashboardDist, "index.html");
+    if (accepts.includes("text/html") && fs.existsSync(dashboardIndex)) {
+      streamFile(res, dashboardIndex);
+      return;
+    }
     res.writeHead(404, { "Content-Type": "text/plain" });
     res.end("404 Not Found");
     return;
